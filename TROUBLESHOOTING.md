@@ -107,5 +107,106 @@ REGISTRY_URL="${{ env.REGISTRY }}/$IMAGE_NAME_LOWER:${IMAGE_TAG}"
 
 ---
 
+# 🔧 GDAL编译linux/fs.h头文件缺失问题修复
+
+## 问题描述
+
+在构建GDAL 3.7.1镜像时，遇到以下CMake配置错误：
+
+```
+CMake Error at port/CMakeLists.txt:146 (message):
+  linux/fs.h header not found.  Impact will be lack of sparse file detection.
+  Define the ACCEPT_MISSING_LINUX_FS_HEADER:BOOL=ON CMake variable if you
+  want to build despite this limitation.
+```
+
+## 问题原因
+
+Alpine Linux基础镜像默认不包含Linux内核头文件，导致GDAL编译时无法找到`linux/fs.h`头文件。这个文件用于稀疏文件检测功能。
+
+## 解决方案
+
+### 1. 安装Linux内核头文件包
+
+在Dockerfile的系统依赖安装步骤中添加：
+
+```dockerfile
+# Linux内核头文件（解决linux/fs.h问题）
+linux-headers \
+```
+
+### 2. 配置CMake接受缺失的头文件
+
+在GDAL编译的CMake配置中添加：
+
+```dockerfile
+cmake .. \
+    # ... 其他配置项 ... \
+    -DACCEPT_MISSING_LINUX_FS_HEADER:BOOL=ON && \
+```
+
+### 3. 完整修复的Dockerfile片段
+
+```dockerfile
+# 安装系统依赖和构建工具
+RUN apk update && \
+    apk add --no-cache \
+        # ... 其他依赖 ... \
+        # Linux内核头文件（解决linux/fs.h问题）
+        linux-headers \
+        # ... 更多依赖 ... \
+    && rm -rf /var/cache/apk/*
+
+# 编译安装GDAL 3.7.1
+RUN cd /tmp && \
+    # ... 下载和解压步骤 ... \
+    cmake .. \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        # ... 其他配置项 ... \
+        -DACCEPT_MISSING_LINUX_FS_HEADER:BOOL=ON && \
+    # ... 编译和安装步骤 ...
+```
+
+## 影响说明
+
+使用`-DACCEPT_MISSING_LINUX_FS_HEADER:BOOL=ON`配置项后：
+
+- ✅ GDAL编译可以正常进行
+- ⚠️ 稀疏文件检测功能将不可用
+- ✅ 其他GDAL功能不受影响
+- ✅ Java绑定正常工作
+
+对于大多数地理空间数据处理用例，稀疏文件检测功能的缺失不会造成显著影响。
+
+## 验证修复
+
+修复应用后，重新构建镜像：
+
+```bash
+# 清理旧镜像和缓存
+docker system prune -af
+
+# 重新构建
+docker build -t gdal-multi-arch:latest .
+
+# 或使用构建脚本
+./build.sh
+```
+
+构建成功后，验证GDAL版本：
+
+```bash
+docker run --rm gdal-multi-arch:latest gdalinfo --version
+# 应输出：GDAL 3.7.1, released 2023/05/10
+```
+
+## 相关文档
+
+- [GDAL CMake构建选项](https://gdal.org/development/cmake.html)
+- [Alpine Linux包管理](https://wiki.alpinelinux.org/wiki/Alpine_Package_Keeper)
+
+---
+
 修复日期：2025-09-10
-修复版本：所有工作流文件 v1.0.1
+修复版本：所有工作流文件 v1.0.1，Dockerfile v1.0.2

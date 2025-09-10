@@ -39,6 +39,8 @@ RUN apk update && \
         make \
         gcc \
         g++ \
+        # Linux内核头文件（解决linux/fs.h问题）
+        linux-headers \
         # GDAL编译依赖
         sqlite-dev \
         proj-dev \
@@ -95,7 +97,8 @@ RUN cd /tmp && \
         -DBUILD_PYTHON_BINDINGS=OFF \
         -DBUILD_JAVA_BINDINGS=ON \
         -DJAVA_HOME=$JAVA_HOME \
-        -DSWIG_EXECUTABLE=/usr/bin/swig && \
+        -DSWIG_EXECUTABLE=/usr/bin/swig \
+        -DACCEPT_MISSING_LINUX_FS_HEADER:BOOL=ON && \
     make -j$(nproc) && \
     make install && \
     # 安装Java绑定
