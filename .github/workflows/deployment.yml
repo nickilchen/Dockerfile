@@ -88,8 +88,9 @@ jobs:
             fi
           fi
           
-          # 设置注册表URL
-          REGISTRY_URL="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${IMAGE_TAG}"
+          # 设置注册表URL（确保小写）
+          IMAGE_NAME_LOWER=$(echo "${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
+          REGISTRY_URL="${{ env.REGISTRY }}/$IMAGE_NAME_LOWER:${IMAGE_TAG}"
           
           # 输出配置
           echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT

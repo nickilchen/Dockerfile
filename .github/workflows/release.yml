@@ -104,6 +104,7 @@ jobs:
           echo "📋 New version: ${NEW_VERSION}"
           
           # 生成发布说明
+          IMAGE_NAME_LOWER=$(echo "${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
           RELEASE_NOTES=$(cat << EOF
           ## 🐳 GDAL Multi-Arch Docker Image ${NEW_VERSION}
           
@@ -116,10 +117,10 @@ jobs:
           ### 🏷️ 镜像标签
           \`\`\`bash
           # 最新版本
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${NEW_VERSION#v}
+          docker pull ${{ env.REGISTRY }}/$IMAGE_NAME_LOWER:${NEW_VERSION#v}
           
           # 最新稳定版
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          docker pull ${{ env.REGISTRY }}/$IMAGE_NAME_LOWER:latest
           \`\`\`
           
           ### ✨ 主要特性
@@ -132,7 +133,7 @@ jobs:
           ### 🚀 快速开始
           \`\`\`bash
           # 运行容器
-          docker run -it --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${NEW_VERSION#v}
+          docker run -it --rm ${{ env.REGISTRY }}/$IMAGE_NAME_LOWER:${NEW_VERSION#v}
           
           # 使用docker-compose
           docker-compose up -d
@@ -205,13 +206,16 @@ jobs:
           VERSION=${RELEASE_TAG#v}
           IS_PRERELEASE="${{ github.event.release.prerelease }}"
           
+          # 确保镜像名称小写
+          IMAGE_NAME_LOWER=$(echo "${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
+          
           # 构建标签列表
-          TAGS="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}"
+          TAGS="${{ env.REGISTRY }}/$IMAGE_NAME_LOWER:${VERSION}"
           
           if [[ "$IS_PRERELEASE" == "false" ]]; then
             # 稳定版本
-            TAGS="${TAGS},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
-            TAGS="${TAGS},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stable"
+            TAGS="${TAGS},${{ env.REGISTRY }}/$IMAGE_NAME_LOWER:latest"
+            TAGS="${TAGS},${{ env.REGISTRY }}/$IMAGE_NAME_LOWER:stable"
             
             # 添加主版本和次版本标签
             IFS='.' read -ra VERSION_PARTS <<< "$VERSION"
@@ -219,12 +223,12 @@ jobs:
             MINOR=${VERSION_PARTS[1]}
             
             if [[ -n "$MAJOR" && -n "$MINOR" ]]; then
-              TAGS="${TAGS},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${MAJOR}"
-              TAGS="${TAGS},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${MAJOR}.${MINOR}"
+              TAGS="${TAGS},${{ env.REGISTRY }}/$IMAGE_NAME_LOWER:${MAJOR}"
+              TAGS="${TAGS},${{ env.REGISTRY }}/$IMAGE_NAME_LOWER:${MAJOR}.${MINOR}"
             fi
           else
             # 预发布版本
-            TAGS="${TAGS},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:prerelease"
+            TAGS="${TAGS},${{ env.REGISTRY }}/$IMAGE_NAME_LOWER:prerelease"
           fi
           
           echo "tags=${TAGS}" >> $GITHUB_OUTPUT
