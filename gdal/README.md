@@ -40,17 +40,19 @@ docker run -it --rm \
   gdal-multi-arch:latest
 ```
 
-### 3. 使用Docker Compose
+## 快速测试
+
+在容器中运行提供的测试程序：
 
 ```bash
-# 启动服务
-docker-compose up -d
-
 # 进入容器
 docker-compose exec gdal bash
 
-# 停止服务
-docker-compose down
+# 编译测试程序
+javac -cp /usr/share/java/gdal.jar /workspace/GdalTest.java
+
+# 运行测试
+java -cp /workspace:/usr/share/java/gdal.jar -Djava.library.path=/usr/lib GdalTest
 ```
 
 ## 详细使用说明
