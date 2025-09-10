@@ -17,7 +17,7 @@ ENV GDAL_VERSION=3.7.1
 ENV GDAL_DATA=/usr/share/gdal
 ENV JAVA_HOME=/opt/java/jdk8
 ENV PATH=$PATH:$JAVA_HOME/bin
-ENV CLASSPATH=$CLASSPATH:/usr/share/java/gdal.jar
+ENV CLASSPATH=/usr/share/java/gdal.jar
 
 # 创建非root用户
 RUN addgroup -g 1000 gdaluser && \
@@ -45,8 +45,8 @@ RUN apk update && \
         geos-dev \
         expat-dev \
         zlib-dev \
-        jpeg-dev \
-        png-dev \
+        libjpeg-turbo-dev \
+        libpng-dev \
         tiff-dev \
         libgeotiff-dev \
         openjpeg-dev \

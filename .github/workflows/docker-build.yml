@@ -44,7 +44,9 @@ on:
 env:
   # 镜像仓库配置
   REGISTRY: ghcr.io
+  ALI_REGISTRY: registry.cn-hangzhou.aliyuncs.com
   IMAGE_NAME: ${{ github.repository }}/gdal-multi-arch
+  ALI_IMAGE_NAME: nickilchen/gdal
   
   # GDAL配置
   GDAL_VERSION: "3.7.1"
@@ -85,6 +87,7 @@ jobs:
           
           # 确定标签
           TAGS=""
+          ALI_TAGS=""
           BRANCH_NAME="${{ github.ref_name }}"
           TAG_SUFFIX="${{ inputs.tag_suffix || '' }}"
           IMAGE_NAME_LOWER=$(echo "${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
@@ -95,21 +98,37 @@ jobs:
               VERSION="${{ github.ref_name }}"
               TAGS="${{ env.REGISTRY }}/$IMAGE_NAME_LOWER:${VERSION#v}${TAG_SUFFIX}"
               TAGS="${TAGS},${{ env.REGISTRY }}/$IMAGE_NAME_LOWER:latest${TAG_SUFFIX}"
+              # 阿里云标签（使用GDAL版本）
+              ALI_TAGS="${{ env.ALI_REGISTRY }}/${{ env.ALI_IMAGE_NAME }}:${{ env.GDAL_VERSION }}${TAG_SUFFIX}"
+              ALI_TAGS="${ALI_TAGS},${{ env.ALI_REGISTRY }}/${{ env.ALI_IMAGE_NAME }}:latest${TAG_SUFFIX}"
             else
               TAGS="${{ env.REGISTRY }}/$IMAGE_NAME_LOWER:${{ github.ref_name }}${TAG_SUFFIX}"
+              ALI_TAGS="${{ env.ALI_REGISTRY }}/${{ env.ALI_IMAGE_NAME }}:${{ github.ref_name }}${TAG_SUFFIX}"
             fi
           elif [[ "$BRANCH_NAME" == "main" ]]; then
             # 主分支
             TAGS="${{ env.REGISTRY }}/$IMAGE_NAME_LOWER:latest${TAG_SUFFIX}"
             TAGS="${TAGS},${{ env.REGISTRY }}/$IMAGE_NAME_LOWER:stable${TAG_SUFFIX}"
+            # 阿里云标签
+            ALI_TAGS="${{ env.ALI_REGISTRY }}/${{ env.ALI_IMAGE_NAME }}:${{ env.GDAL_VERSION }}${TAG_SUFFIX}"
+            ALI_TAGS="${ALI_TAGS},${{ env.ALI_REGISTRY }}/${{ env.ALI_IMAGE_NAME }}:latest${TAG_SUFFIX}"
           elif [[ "$BRANCH_NAME" == "develop" ]]; then
             # 开发分支
             TAGS="${{ env.REGISTRY }}/$IMAGE_NAME_LOWER:dev${TAG_SUFFIX}"
             TAGS="${TAGS},${{ env.REGISTRY }}/$IMAGE_NAME_LOWER:nightly${TAG_SUFFIX}"
+            # 阿里云标签
+            ALI_TAGS="${{ env.ALI_REGISTRY }}/${{ env.ALI_IMAGE_NAME }}:${{ env.GDAL_VERSION }}-dev${TAG_SUFFIX}"
           else
             # 其他分支或PR
             SAFE_BRANCH=$(echo "$BRANCH_NAME" | sed 's/[^a-zA-Z0-9.-]/-/g')
             TAGS="${{ env.REGISTRY }}/$IMAGE_NAME_LOWER:${SAFE_BRANCH}${TAG_SUFFIX}"
+            ALI_TAGS="${{ env.ALI_REGISTRY }}/${{ env.ALI_IMAGE_NAME }}:${SAFE_BRANCH}${TAG_SUFFIX}"
+          fi
+          
+          # 合并所有标签
+          ALL_TAGS="$TAGS"
+          if [[ -n "$ALI_TAGS" ]]; then
+            ALL_TAGS="${ALL_TAGS},${ALI_TAGS}"
           fi
           
           # 生成缓存键
@@ -122,7 +141,8 @@ jobs:
           echo "platforms=$PLATFORMS" >> $GITHUB_OUTPUT
           echo "push-enabled=$PUSH_ENABLED" >> $GITHUB_OUTPUT
           echo "cache-key=$CACHE_KEY" >> $GITHUB_OUTPUT
-          echo "tags=$TAGS" >> $GITHUB_OUTPUT
+          echo "tags=$ALL_TAGS" >> $GITHUB_OUTPUT
+          echo "ali-tags=$ALI_TAGS" >> $GITHUB_OUTPUT
           
           # 显示配置
           echo "🔧 Build Configuration:"
@@ -130,7 +150,8 @@ jobs:
           echo "  🏷️  Image: $IMAGE_NAME_LOWER"
           echo "  🏗️  Platforms: $PLATFORMS"
           echo "  📤 Push: $PUSH_ENABLED"
-          echo "  🔖 Tags: $TAGS"
+          echo "  🔖 GitHub Tags: $TAGS"
+          echo "  🔖 Aliyun Tags: $ALI_TAGS"
           echo "  🗂️  Cache Key: $CACHE_KEY"
 
   # 构建和推送多架构镜像
@@ -153,6 +174,14 @@ jobs:
           registry: ${{ needs.build-config.outputs.registry }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🔐 Log in to Aliyun Container Registry
+        if: needs.build-config.outputs.push-enabled == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ALI_REGISTRY }}
+          username: ${{ secrets.ALI_REGISTRY_USERNAME }}
+          password: ${{ secrets.ALI_REGISTRY_PASSWORD }}
 
       - name: 🛠️ Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
