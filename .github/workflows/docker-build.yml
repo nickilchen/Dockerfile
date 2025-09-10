@@ -20,11 +20,14 @@ on:
         default: ''
         type: string
 
-  # 推送到main分支时触发
+  # 推送触发（分支和标签）
   push:
     branches:
       - main
       - develop
+    tags:
+      - 'v*.*.*'
+      - 'gdal-*'
     paths:
       - 'gdal/**'
       - '.github/workflows/docker-build.yml'
@@ -37,12 +40,6 @@ on:
     paths:
       - 'gdal/**'
       - '.github/workflows/docker-build.yml'
-
-  # Tag推送时触发
-  push:
-    tags:
-      - 'v*.*.*'
-      - 'gdal-*'
 
 env:
   # 镜像仓库配置
