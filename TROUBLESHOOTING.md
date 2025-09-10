@@ -208,5 +208,99 @@ docker run --rm gdal-multi-arch:latest gdalinfo --version
 
 ---
 
+# 🔧 GDAL Java绑定构建ant依赖缺失问题修复
+
+## 问题描述
+
+在构建GDAL Java绑定时，遇到以下CMake配置错误：
+
+```
+CMake Error at swig/CMakeLists.txt:53 (message):
+  ant is a requirement to build the Java bindings
+```
+
+## 问题原因
+
+GDAL构建Java绑定时需要Apache Ant工具来编译Java代码，但Alpine基础镜像中没有预装ant，导致CMake配置失败。
+
+## 解决方案
+
+### 在Dockerfile中添加Apache Ant依赖
+
+在系统依赖安装步骤中添加`apache-ant`包：
+
+```dockerfile
+# 安装系统依赖和构建工具
+RUN apk update && \
+    apk add --no-cache \
+        # ... 其他依赖 ... \
+        # Java开发工具
+        swig \
+        # Apache Ant（构建Java绑定必需）
+        apache-ant \
+        # ... 更多依赖 ... \
+    && rm -rf /var/cache/apk/*
+```
+
+### 验证修复
+
+修复应用后，重新构建镜像：
+
+```bash
+# 清理旧镜像和缓存
+docker system prune -af
+
+# 重新构建
+docker build -t gdal-multi-arch:latest .
+```
+
+构建过程中应该能看到：
+
+```
+-- Found Java: /opt/java/jdk8/bin/java (found version "1.8.0.412")
+-- Found Apache Ant
+```
+
+## 相关依赖说明
+
+### Apache Ant的作用
+
+- **Java代码编译**：编译GDAL的Java绑定源代码
+- **JAR包生成**：生成`gdal.jar`文件
+- **构建自动化**：管理Java项目的构建流程
+
+### 完整的Java绑定构建依赖
+
+```dockerfile
+# Java开发环境完整依赖
+apk add --no-cache \
+    # JDK环境（通过wget安装Zulu JDK）
+    # SWIG（生成绑定代码）
+    swig \
+    # Apache Ant（编译Java代码）
+    apache-ant
+```
+
+## 影响说明
+
+添加Apache Ant后：
+
+- ✅ GDAL Java绑定能够正常构建
+- ✅ 生成完整的`gdal.jar`和native库文件
+- ✅ Java应用可以正常使用GDAL功能
+- ⚠️ 镜像大小略有增加（约10-15MB）
+
+## 相关文档
+
+- [Apache Ant官方文档](https://ant.apache.org/)
+- [GDAL Java绑定构建说明](https://gdal.org/api/java/)
+
+---
+
+修复日期：2025-09-10
+修复版本：Dockerfile v1.0.3
+
+---
+
 修复日期：2025-09-10
 修复版本：所有工作流文件 v1.0.1，Dockerfile v1.0.2

@@ -54,6 +54,8 @@ RUN apk update && \
         openjpeg-dev \
         # Java开发工具
         swig \
+        # Apache Ant（构建Java绑定必需）
+        apache-ant \
         # 其他工具
         git \
     && rm -rf /var/cache/apk/*
@@ -117,7 +119,8 @@ RUN apk del \
         gcc \
         g++ \
         git \
-        swig && \
+        swig \
+        apache-ant && \
     rm -rf /var/cache/apk/* /tmp/*
 
 # 验证GDAL安装
