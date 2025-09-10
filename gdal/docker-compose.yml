@@ -1,0 +1,101 @@
+version: '3.8'
+
+services:
+  gdal:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      platforms:
+        - linux/amd64
+        - linux/arm64
+    image: gdal-multi-arch:latest
+    container_name: gdal-container
+    
+    # 环境变量配置
+    environment:
+      - GDAL_VERSION=3.7.1
+      - GDAL_DATA=/usr/share/gdal
+      - JAVA_HOME=/opt/java/jdk8
+      - GDAL_CACHEMAX=256
+      - GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR
+      - CPL_VSIL_CURL_ALLOWED_EXTENSIONS=.tif,.tiff,.vrt,.ovr
+    
+    # 卷挂载配置
+    volumes:
+      - ./data:/data:rw               # 数据输入输出目录
+      - ./workspace:/workspace:rw     # 工作空间
+      - /tmp:/tmp:rw                  # 临时文件目录
+    
+    # 网络配置
+    networks:
+      - gdal-network
+    
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    
+    # 重启策略
+    restart: unless-stopped
+    
+    # 工作目录
+    working_dir: /workspace
+    
+    # 交互式终端
+    stdin_open: true
+    tty: true
+    
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "gdalinfo", "--version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # 开发环境服务（可选）
+  gdal-dev:
+    extends: gdal
+    container_name: gdal-dev-container
+    
+    # 卷挂载配置（Java专用）
+    volumes:
+      - ./data:/data:rw               # 数据输入输出目录
+      - ./workspace:/workspace:rw     # 工作空间
+      - ./GdalTest.java:/workspace/GdalTest.java:ro  # Java测试文件
+      - ~/.ssh:/home/gdaluser/.ssh:ro # SSH配置（只读）
+    
+    # 开发环境变量（Java专用）
+    environment:
+      - GDAL_VERSION=3.7.1
+      - GDAL_DATA=/usr/share/gdal
+      - JAVA_HOME=/opt/java/jdk8
+      - CLASSPATH=/usr/share/java/gdal.jar
+      - GDAL_CACHEMAX=512
+      - GDAL_NUM_THREADS=ALL_CPUS
+    
+    # 端口映射（如需要）
+    ports:
+      - "8080:8080"   # 可用于Web应用
+      - "9090:9090"   # 可用于监控
+    
+    # 命令覆盖
+    command: ["bash", "-c", "tail -f /dev/null"]
+
+networks:
+  gdal-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  gdal-data:
+    driver: local
+  gdal-workspace:
+    driver: local
