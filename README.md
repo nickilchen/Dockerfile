@@ -17,6 +17,7 @@
 - 🐧 基于Alpine Linux，镜像体积小
 - 🗺️ GDAL 3.7.1地理空间数据处理能力
 - ☕ 集成Oracle JDK 8兼容运行环境（Zulu JDK）
+- 🚀 **Java专用**: 不包含Python支持，保持轻量化
 - 🔒 安全设计，非root用户运行
 - 📊 包含健康检查和资源限制
 
