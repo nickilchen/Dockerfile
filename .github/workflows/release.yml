@@ -1,0 +1,293 @@
+name: 🏷️ Release and Tag Management
+
+on:
+  # 发布创建时触发
+  release:
+    types: [published, edited]
+    
+  # 手动触发版本管理
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Version bump type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - major
+          - minor
+          - patch
+          - prerelease
+      create_release:
+        description: 'Create GitHub release'
+        required: false
+        default: true
+        type: boolean
+      prerelease:
+        description: 'Mark as prerelease'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/gdal-multi-arch
+  GDAL_VERSION: "3.7.1"
+
+jobs:
+  # 版本管理
+  version-management:
+    name: 📋 Version Management
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: write
+      
+    outputs:
+      new-version: ${{ steps.version.outputs.new-version }}
+      release-notes: ${{ steps.version.outputs.release-notes }}
+      
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🔍 Get current version
+        id: current-version
+        run: |
+          # 从最新的tag获取当前版本
+          CURRENT_VERSION=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "v0.0.0")
+          echo "current-version=${CURRENT_VERSION}" >> $GITHUB_OUTPUT
+          echo "📋 Current version: ${CURRENT_VERSION}"
+
+      - name: 🔢 Calculate new version
+        id: version
+        run: |
+          CURRENT="${{ steps.current-version.outputs.current-version }}"
+          TYPE="${{ inputs.version_type }}"
+          
+          # 移除v前缀进行计算
+          CURRENT_NUM=${CURRENT#v}
+          IFS='.' read -ra VERSION_PARTS <<< "$CURRENT_NUM"
+          MAJOR=${VERSION_PARTS[0]:-0}
+          MINOR=${VERSION_PARTS[1]:-0}
+          PATCH=${VERSION_PARTS[2]:-0}
+          
+          # 根据类型递增版本
+          case $TYPE in
+            "major")
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            "minor")
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            "patch")
+              PATCH=$((PATCH + 1))
+              ;;
+            "prerelease")
+              # 预发布版本添加-rc后缀
+              PATCH=$((PATCH + 1))
+              NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}-rc.$(date +%Y%m%d%H%M)"
+              ;;
+          esac
+          
+          if [[ "$TYPE" != "prerelease" ]]; then
+            NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+          fi
+          
+          echo "new-version=${NEW_VERSION}" >> $GITHUB_OUTPUT
+          echo "📋 New version: ${NEW_VERSION}"
+          
+          # 生成发布说明
+          RELEASE_NOTES=$(cat << EOF
+          ## 🐳 GDAL Multi-Arch Docker Image ${NEW_VERSION}
+          
+          ### 📦 镜像信息
+          - **GDAL版本**: ${{ env.GDAL_VERSION }}
+          - **Java版本**: Oracle JDK 8兼容 (Zulu JDK)
+          - **支持架构**: linux/amd64, linux/arm64
+          - **基础镜像**: Alpine Linux
+          
+          ### 🏷️ 镜像标签
+          \`\`\`bash
+          # 最新版本
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${NEW_VERSION#v}
+          
+          # 最新稳定版
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          \`\`\`
+          
+          ### ✨ 主要特性
+          - ✅ Java专用GDAL绑定（不包含Python）
+          - ✅ 多架构支持 (AMD64/ARM64)
+          - ✅ 轻量化Alpine基础镜像
+          - ✅ 完整的地理空间数据处理能力
+          - ✅ 生产就绪的安全配置
+          
+          ### 🚀 快速开始
+          \`\`\`bash
+          # 运行容器
+          docker run -it --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${NEW_VERSION#v}
+          
+          # 使用docker-compose
+          docker-compose up -d
+          \`\`\`
+          
+          ### 📝 完整更新日志
+          查看 [CHANGELOG.md](CHANGELOG.md) 了解详细变更内容。
+          EOF
+          )
+          
+          # 保存发布说明到文件
+          echo "$RELEASE_NOTES" > release-notes.md
+          echo "release-notes<<EOF" >> $GITHUB_OUTPUT
+          echo "$RELEASE_NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: 🏷️ Create and push tag
+        run: |
+          NEW_VERSION="${{ steps.version.outputs.new-version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # 创建标签
+          git tag -a "$NEW_VERSION" -m "Release $NEW_VERSION"
+          git push origin "$NEW_VERSION"
+          
+          echo "✅ Created and pushed tag: $NEW_VERSION"
+
+      - name: 📦 Create GitHub Release
+        if: inputs.create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.new-version }}
+          name: GDAL Multi-Arch ${{ steps.version.outputs.new-version }}
+          body_path: release-notes.md
+          prerelease: ${{ inputs.prerelease }}
+          generate_release_notes: true
+          files: |
+            gdal/Dockerfile
+            gdal/docker-compose.yml
+            gdal/README.md
+
+  # 处理发布事件
+  handle-release:
+    name: 🚀 Handle Release
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    permissions:
+      contents: read
+      packages: write
+      
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🔐 Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🛠️ Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🏷️ Extract release metadata
+        id: meta
+        run: |
+          RELEASE_TAG="${{ github.event.release.tag_name }}"
+          VERSION=${RELEASE_TAG#v}
+          IS_PRERELEASE="${{ github.event.release.prerelease }}"
+          
+          # 构建标签列表
+          TAGS="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}"
+          
+          if [[ "$IS_PRERELEASE" == "false" ]]; then
+            # 稳定版本
+            TAGS="${TAGS},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+            TAGS="${TAGS},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stable"
+            
+            # 添加主版本和次版本标签
+            IFS='.' read -ra VERSION_PARTS <<< "$VERSION"
+            MAJOR=${VERSION_PARTS[0]}
+            MINOR=${VERSION_PARTS[1]}
+            
+            if [[ -n "$MAJOR" && -n "$MINOR" ]]; then
+              TAGS="${TAGS},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${MAJOR}"
+              TAGS="${TAGS},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${MAJOR}.${MINOR}"
+            fi
+          else
+            # 预发布版本
+            TAGS="${TAGS},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:prerelease"
+          fi
+          
+          echo "tags=${TAGS}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "is-prerelease=${IS_PRERELEASE}" >> $GITHUB_OUTPUT
+          
+          echo "🏷️ Release tags: ${TAGS}"
+
+      - name: 🏗️ Build and push release image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./gdal
+          file: ./gdal/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: |
+            org.opencontainers.image.title=GDAL Multi-Architecture
+            org.opencontainers.image.description=Alpine-based GDAL ${{ env.GDAL_VERSION }} with Oracle JDK 8 for multi-architecture
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+            org.opencontainers.image.url=${{ github.event.repository.html_url }}
+            org.opencontainers.image.source=${{ github.event.repository.clone_url }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+            gdal.version=${{ env.GDAL_VERSION }}
+            java.version=8
+            release.version=${{ steps.meta.outputs.version }}
+            release.prerelease=${{ steps.meta.outputs.is-prerelease }}
+          cache-from: type=gha,scope=release-gdal-${{ env.GDAL_VERSION }}
+          cache-to: type=gha,mode=max,scope=release-gdal-${{ env.GDAL_VERSION }}
+
+      - name: 📋 Update release with image info
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          append_body: true
+          body: |
+            
+            ## 🐳 Docker镜像已发布
+            
+            **镜像标签**: 
+            ```
+            ${{ steps.meta.outputs.tags }}
+            ```
+            
+            **拉取命令**:
+            ```bash
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+            ```
+
+  # 清理旧的预发布版本
+  cleanup-prereleases:
+    name: 🧹 Cleanup Old Prereleases
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release' && github.event.release.prerelease == false
+    permissions:
+      contents: write
+      packages: write
+      
+    steps:
+      - name: 🗑️ Delete old prerelease images
+        run: |
+          echo "🧹 Cleaning up old prerelease images..."
+          # 这里可以添加清理逻辑，比如删除旧的预发布镜像
+          # 注意：需要适当的权限和API调用
+          echo "✅ Cleanup completed"

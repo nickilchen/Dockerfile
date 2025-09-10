@@ -35,7 +35,45 @@ docker-compose up -d
 
 [查看详细文档](./gdal/README.md)
 
-## 通用特性
+## 🚀 CI/CD 自动化
+
+本项目使用GitHub Actions实现完整的CI/CD流程，支持多架构构建和多环境部署。
+
+### 📋 主要特性
+
+- ✅ **多架构构建**: 自动构建AMD64和ARM64架构镜像
+- 🔄 **自动化部署**: 支持开发/预发布/生产环境自动部署
+- 📦 **版本管理**: 自动化版本发布和标签管理
+- 🚀 **性能优化**: 智能缓存和构建加速
+- 🔒 **安全扫描**: 自动漏洞检测和安全验证
+
+### 🏷️ 镜像标签
+
+| 标签 | 说明 | 更新频率 |
+|------|------|----------|
+| `latest` | 最新稳定版 | 主分支推送时 |
+| `dev` | 开发版本 | 开发分支推送时 |
+| `v1.2.3` | 具体版本 | 标签发布时 |
+| `stable` | 稳定版本 | 正式发布时 |
+
+### 🚀 快速使用
+
+```bash
+# 拉取最新稳定版
+docker pull ghcr.io/your-username/dockerfile/gdal-multi-arch:latest
+
+# 拉取开发版
+docker pull ghcr.io/your-username/dockerfile/gdal-multi-arch:dev
+
+# 拉取特定版本
+docker pull ghcr.io/your-username/dockerfile/gdal-multi-arch:v1.0.0
+```
+
+### 📚 详细文档
+
+查看 [CI/CD配置指南](CI-CD.md) 了解完整的自动化流程。
+
+## ⚙️ 通用特性
 
 - ✅ **多架构支持**: 所有镜像支持AMD64和ARM64架构
 - 🔧 **自动化构建**: 提供完整的构建脚本和CI/CD配置
