@@ -57,7 +57,7 @@ WORKDIR /tmp
 #COPY ./gdal-3.7.1.tar.gz /tmp
 
 # 下载并编译安装 GDAL 3.7.1
-RUN RUN cd /tmp && \
+RUN cd /tmp && \
     wget https://github.com/OSGeo/gdal/releases/download/v${GDAL_VERSION}/gdal-${GDAL_VERSION}.tar.gz && \
     tar -xzf gdal-${GDAL_VERSION}.tar.gz && \
     mkdir -p gdal-${GDAL_VERSION}/build && \
