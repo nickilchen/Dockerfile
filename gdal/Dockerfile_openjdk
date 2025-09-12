@@ -19,6 +19,7 @@ ENV GDAL_DATA=/usr/local/share/gdal
 ENV JAVA_HOME=/usr/local/openjdk-8
 ENV PATH=$PATH:$JAVA_HOME/bin
 ENV CLASSPATH=/usr/local/share/java/gdal.jar
+ENV LD_LIBRARY_PATH=/usr/local/share/java:$LD_LIBRARY_PATH
 
 # 设置非交互式前端以避免提示
 ENV DEBIAN_FRONTEND=noninteractive
