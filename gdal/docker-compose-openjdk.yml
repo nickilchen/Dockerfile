@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  gdal-openjdk:
+    build:
+      context: .
+      dockerfile: Dockerfile_openjdk
+    image: gdal-openjdk:3.7.1-openjdk8u342
+    container_name: gdal-openjdk-container
+    
+    # 环境变量配置
+    environment:
+      - GDAL_VERSION=3.7.1
+      - GDAL_DATA=/usr/local/share/gdal
+      - JAVA_HOME=/usr/local/openjdk-8
+      - CLASSPATH=/usr/local/share/java/gdal.jar
+      - GDAL_CACHEMAX=256
+    
+    # 卷挂载配置
+    volumes:
+      - ./data:/data:rw               # 数据输入输出目录
+      - ./workspace:/workspace:rw     # 工作空间
+      - ./GdalOpenJdkTest.java:/workspace/GdalOpenJdkTest.java:ro  # Java测试文件
+    
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    
+    # 重启策略
+    restart: unless-stopped
+    
+    # 工作目录
+    working_dir: /workspace
+    
+    # 交互式终端
+    stdin_open: true
+    tty: true
+    
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "gdalinfo", "--version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

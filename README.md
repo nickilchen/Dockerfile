@@ -35,6 +35,34 @@ docker-compose up -d
 
 [查看详细文档](./gdal/README.md)
 
+### GDAL OpenJDK镜像
+
+基于OpenJDK 8u342的GDAL（地理空间数据抽象库）镜像，包含完整的GEOS、PROJ、JPEG、HDF5、HDF4和NetCDF支持。
+
+**特性:**
+- 🏗️ 多架构支持 (AMD64, ARM64)
+- 🐧 基于Ubuntu，功能完整
+- 🗺️ GDAL 3.7.1地理空间数据处理能力
+- ☕ 集成OpenJDK 8u342运行环境
+- 📚 包含GEOS、PROJ、JPEG、HDF5、HDF4、NetCDF库支持
+- 🚀 Java绑定完整支持
+- 🔒 安全设计，非root用户运行
+- 📊 包含健康检查
+
+**快速开始:**
+```bash
+# 进入GDAL目录
+cd gdal
+
+# 构建镜像（多架构）
+./build-openjdk.sh
+
+# 或使用docker-compose
+docker-compose -f docker-compose-openjdk.yml up -d
+```
+
+[查看详细文档](./gdal/README_OPENJDK.md)
+
 ## 🚀 CI/CD 自动化
 
 本项目使用GitHub Actions实现完整的CI/CD流程，支持多架构构建和多环境部署。
@@ -127,8 +155,11 @@ dockerfile/
 ├── README.md                 # 项目主文档
 ├── gdal/                     # GDAL多架构镜像
 │   ├── Dockerfile           # GDAL镜像构建文件
+│   ├── Dockerfile_openjdk   # GDAL OpenJDK镜像构建文件
 │   ├── docker-compose.yml   # 服务编排配置
+│   ├── docker-compose-openjdk.yml   # OpenJDK服务编排配置
 │   ├── build.sh            # 多架构构建脚本
+│   ├── build-openjdk.sh    # OpenJDK多架构构建脚本
 │   └── README.md           # GDAL镜像详细文档
 └── [其他镜像目录]...
 ```
@@ -204,6 +235,13 @@ dockerfile/
 - ✅ GDAL多架构镜像支持
 - 📚 完整文档和使用指南
 - 🔧 自动化构建脚本
+
+### v1.1.0 (2025-09-12)
+- 🎉 新增GDAL OpenJDK镜像支持
+- ✅ 基于OpenJDK 8u342的GDAL 3.7.1镜像
+- 📚 包含GEOS、PROJ、JPEG、HDF5、HDF4、NetCDF库支持
+- 🔧 提供GitHub Actions自动化构建
+- 🏗️ 支持多架构（AMD64/ARM64）构建
 
 ---
 

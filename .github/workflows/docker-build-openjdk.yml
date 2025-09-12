@@ -1,0 +1,356 @@
+name: 🐳 Build and Push GDAL OpenJDK Image
+
+on:
+  # 手动触发
+  workflow_dispatch:
+    inputs:
+      push_to_registry:
+        description: 'Push to registry'
+        required: false
+        default: 'true'
+        type: boolean
+      platforms:
+        description: 'Target platforms'
+        required: false
+        default: 'linux/amd64,linux/arm64'
+        type: string
+      tag_suffix:
+        description: 'Tag suffix (e.g., -dev, -beta)'
+        required: false
+        default: ''
+        type: string
+
+  # 推送触发（分支和标签）
+  push:
+    branches:
+      - main
+      - develop
+    tags:
+      - 'v*.*.*'
+      - 'gdal-*'
+    paths:
+      - 'gdal/Dockerfile_openjdk'
+      - 'gdal/build-openjdk.sh'
+      - '.github/workflows/docker-build-openjdk.yml'
+
+  # Pull Request时触发（仅构建，不推送）
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'gdal/Dockerfile_openjdk'
+      - 'gdal/build-openjdk.sh'
+      - '.github/workflows/docker-build-openjdk.yml'
+
+env:
+  # 镜像仓库配置
+  REGISTRY: ghcr.io
+  ALI_REGISTRY: registry.cn-hangzhou.aliyuncs.com
+  IMAGE_NAME: ${{ github.repository }}/gdal-openjdk
+  ALI_IMAGE_NAME: nickilchen/gdal-openjdk
+  
+  # GDAL配置
+  GDAL_VERSION: "3.7.1"
+  JAVA_VERSION: "8u342"
+
+jobs:
+  # 构建配置分析
+  build-config:
+    name: 📋 Build Configuration
+    runs-on: ubuntu-latest
+    outputs:
+      registry: ${{ steps.config.outputs.registry }}
+      image-name: ${{ steps.config.outputs.image-name }}
+      platforms: ${{ steps.config.outputs.platforms }}
+      push-enabled: ${{ steps.config.outputs.push-enabled }}
+      cache-key: ${{ steps.config.outputs.cache-key }}
+      tags: ${{ steps.config.outputs.tags }}
+      
+    steps:
+      - name: 🔍 Analyze build configuration
+        id: config
+        run: |
+          # 确定是否推送
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            PUSH_ENABLED="false"
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            PUSH_ENABLED="${{ inputs.push_to_registry }}"
+          else
+            PUSH_ENABLED="true"
+          fi
+          
+          # 确定平台
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.platforms }}" ]]; then
+            PLATFORMS="${{ inputs.platforms }}"
+          else
+            PLATFORMS="linux/amd64,linux/arm64"
+          fi
+          
+          # 确定标签
+          TAGS=""
+          ALI_TAGS=""
+          BRANCH_NAME="${{ github.ref_name }}"
+          TAG_SUFFIX="${{ inputs.tag_suffix || '' }}"
+          IMAGE_NAME_LOWER=$(echo "${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
+          
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            # 标签推送
+            if [[ "${{ github.ref_name }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              VERSION="${{ github.ref_name }}"
+              TAGS="${{ env.REGISTRY }}/$IMAGE_NAME_LOWER:${VERSION#v}${TAG_SUFFIX}"
+              TAGS="${TAGS},${{ env.REGISTRY }}/$IMAGE_NAME_LOWER:latest${TAG_SUFFIX}"
+              # 阿里云标签（使用GDAL版本）
+              ALI_TAGS="${{ env.ALI_REGISTRY }}/${{ env.ALI_IMAGE_NAME }}:${{ env.GDAL_VERSION }}${TAG_SUFFIX}"
+              ALI_TAGS="${ALI_TAGS},${{ env.ALI_REGISTRY }}/${{ env.ALI_IMAGE_NAME }}:latest${TAG_SUFFIX}"
+            else
+              TAGS="${{ env.REGISTRY }}/$IMAGE_NAME_LOWER:${{ github.ref_name }}${TAG_SUFFIX}"
+              ALI_TAGS="${{ env.ALI_REGISTRY }}/${{ env.ALI_IMAGE_NAME }}:${{ github.ref_name }}${TAG_SUFFIX}"
+            fi
+          elif [[ "$BRANCH_NAME" == "main" ]]; then
+            # 主分支
+            TAGS="${{ env.REGISTRY }}/$IMAGE_NAME_LOWER:latest${TAG_SUFFIX}"
+            TAGS="${TAGS},${{ env.REGISTRY }}/$IMAGE_NAME_LOWER:stable${TAG_SUFFIX}"
+            # 阿里云标签
+            ALI_TAGS="${{ env.ALI_REGISTRY }}/${{ env.ALI_IMAGE_NAME }}:${{ env.GDAL_VERSION }}${TAG_SUFFIX}"
+            ALI_TAGS="${ALI_TAGS},${{ env.ALI_REGISTRY }}/${{ env.ALI_IMAGE_NAME }}:latest${TAG_SUFFIX}"
+          elif [[ "$BRANCH_NAME" == "develop" ]]; then
+            # 开发分支
+            TAGS="${{ env.REGISTRY }}/$IMAGE_NAME_LOWER:dev${TAG_SUFFIX}"
+            TAGS="${TAGS},${{ env.REGISTRY }}/$IMAGE_NAME_LOWER:nightly${TAG_SUFFIX}"
+            # 阿里云标签
+            ALI_TAGS="${{ env.ALI_REGISTRY }}/${{ env.ALI_IMAGE_NAME }}:${{ env.GDAL_VERSION }}-dev${TAG_SUFFIX}"
+          else
+            # 其他分支或PR
+            SAFE_BRANCH=$(echo "$BRANCH_NAME" | sed 's/[^a-zA-Z0-9.-]/-/g')
+            TAGS="${{ env.REGISTRY }}/$IMAGE_NAME_LOWER:${SAFE_BRANCH}${TAG_SUFFIX}"
+            ALI_TAGS="${{ env.ALI_REGISTRY }}/${{ env.ALI_IMAGE_NAME }}:${SAFE_BRANCH}${TAG_SUFFIX}"
+          fi
+          
+          # 合并所有标签
+          ALL_TAGS="$TAGS"
+          if [[ -n "$ALI_TAGS" ]]; then
+            ALL_TAGS="${ALL_TAGS},${ALI_TAGS}"
+          fi
+          
+          # 生成缓存键
+          CACHE_KEY="gdal-openjdk-${{ env.GDAL_VERSION }}-java${{ env.JAVA_VERSION }}-$(echo '$PLATFORMS' | tr ',' '-' | tr '/' '-')"
+          
+          # 输出配置
+          IMAGE_NAME_LOWER=$(echo "${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
+          echo "registry=${{ env.REGISTRY }}" >> $GITHUB_OUTPUT
+          echo "image-name=$IMAGE_NAME_LOWER" >> $GITHUB_OUTPUT
+          echo "platforms=$PLATFORMS" >> $GITHUB_OUTPUT
+          echo "push-enabled=$PUSH_ENABLED" >> $GITHUB_OUTPUT
+          echo "cache-key=$CACHE_KEY" >> $GITHUB_OUTPUT
+          echo "tags=$ALL_TAGS" >> $GITHUB_OUTPUT
+          echo "ali-tags=$ALI_TAGS" >> $GITHUB_OUTPUT
+          
+          # 显示配置
+          echo "🔧 Build Configuration:"
+          echo "  📦 Registry: ${{ env.REGISTRY }}"
+          echo "  🏷️  Image: $IMAGE_NAME_LOWER"
+          echo "  🏗️  Platforms: $PLATFORMS"
+          echo "  📤 Push: $PUSH_ENABLED"
+          echo "  🔖 GitHub Tags: $TAGS"
+          echo "  🔖 Aliyun Tags: $ALI_TAGS"
+          echo "  🗂️  Cache Key: $CACHE_KEY"
+
+  # 构建和推送镜像
+  build-and-push:
+    name: 🏗️ Build and Push
+    runs-on: ubuntu-latest
+    needs: build-config
+    permissions:
+      contents: read
+      packages: write
+      
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🔐 Log in to Container Registry
+        if: needs.build-config.outputs.push-enabled == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ needs.build-config.outputs.registry }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🔐 Log in to Aliyun Container Registry
+        if: needs.build-config.outputs.push-enabled == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ALI_REGISTRY }}
+          username: ${{ secrets.ALI_REGISTRY_USERNAME }}
+          password: ${{ secrets.ALI_REGISTRY_PASSWORD }}
+
+      - name: 🛠️ Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: all
+
+      - name: 🛠️ Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            network=host
+          platforms: ${{ needs.build-config.outputs.platforms }}
+
+      - name: 🏷️ Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ needs.build-config.outputs.registry }}/${{ needs.build-config.outputs.image-name }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+          labels: |
+            org.opencontainers.image.title=GDAL OpenJDK
+            org.opencontainers.image.description=Ubuntu-based GDAL ${{ env.GDAL_VERSION }} with OpenJDK ${{ env.JAVA_VERSION }}
+            org.opencontainers.image.vendor=GDAL Project
+            gdal.version=${{ env.GDAL_VERSION }}
+            java.version=${{ env.JAVA_VERSION }}
+            architecture=${{ needs.build-config.outputs.platforms }}
+
+      - name: 🏗️ Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./gdal
+          file: ./gdal/Dockerfile_openjdk
+          platforms: ${{ needs.build-config.outputs.platforms }}
+          push: ${{ needs.build-config.outputs.push-enabled }}
+          tags: ${{ needs.build-config.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ needs.build-config.outputs.cache-key }}
+          cache-to: type=gha,mode=max,scope=${{ needs.build-config.outputs.cache-key }}
+          build-args: |
+            GDAL_VERSION=${{ env.GDAL_VERSION }}
+            BUILDKIT_INLINE_CACHE=1
+
+      - name: 📋 Image digest
+        if: needs.build-config.outputs.push-enabled == 'true'
+        run: |
+          echo "🎯 Image digest: ${{ steps.meta.outputs.digest }}"
+          echo "🏷️ Tags: ${{ needs.build-config.outputs.tags }}"
+
+  # 测试构建的镜像
+  test-image:
+    name: 🧪 Test Image
+    runs-on: ubuntu-latest
+    needs: [build-config, build-and-push]
+    if: needs.build-config.outputs.push-enabled == 'true'
+    strategy:
+      matrix:
+        platform: [linux/amd64, linux/arm64]
+        
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🛠️ Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🔐 Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ needs.build-config.outputs.registry }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🧪 Test image functionality
+        run: |
+          # 获取第一个标签进行测试
+          FIRST_TAG=$(echo "${{ needs.build-config.outputs.tags }}" | cut -d',' -f1)
+          echo "🏷️ Testing tag: $FIRST_TAG"
+          
+          # 为特定平台拉取镜像
+          PLATFORM="${{ matrix.platform }}"
+          docker pull --platform=$PLATFORM $FIRST_TAG
+          
+          echo "🔍 Testing GDAL functionality..."
+          docker run --rm --platform=$PLATFORM $FIRST_TAG gdalinfo --version
+          
+          echo "☕ Testing Java functionality..."
+          docker run --rm --platform=$PLATFORM $FIRST_TAG java -version
+          
+          echo "🔍 Testing GDAL Java bindings..."
+          docker run --rm --platform=$PLATFORM $FIRST_TAG ls -la /usr/local/share/java/gdal.jar
+          
+          echo "✅ Platform $PLATFORM tests passed!"
+
+  # 安全扫描
+  security-scan:
+    name: 🔒 Security Scan
+    runs-on: ubuntu-latest
+    needs: [build-config, build-and-push]
+    if: needs.build-config.outputs.push-enabled == 'true'
+    permissions:
+      security-events: write
+      
+    steps:
+      - name: 🔍 Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ needs.build-config.outputs.registry }}/${{ needs.build-config.outputs.image-name }}:latest
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: 📤 Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  # 构建总结
+  build-summary:
+    name: 📊 Build Summary
+    runs-on: ubuntu-latest
+    needs: [build-config, build-and-push, test-image]
+    if: always()
+    
+    steps:
+      - name: 📋 Create build summary
+        run: |
+          echo "## 🐳 GDAL OpenJDK Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📊 Build Information" >> $GITHUB_STEP_SUMMARY
+          echo "- **🏷️ Image**: \`${{ needs.build-config.outputs.image-name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **🏗️ Platforms**: \`${{ needs.build-config.outputs.platforms }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **📤 Push**: \`${{ needs.build-config.outputs.push-enabled }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **🔖 Tags**: \`${{ needs.build-config.outputs.tags }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **📦 GDAL Version**: \`${{ env.GDAL_VERSION }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **☕ Java Version**: \`${{ env.JAVA_VERSION }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # 构建状态
+          if [[ "${{ needs.build-and-push.result }}" == "success" ]]; then
+            echo "### ✅ Build Status: Success" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Build Status: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # 测试状态
+          if [[ "${{ needs.test-image.result }}" == "success" ]]; then
+            echo "### ✅ Test Status: Passed" >> $GITHUB_STEP_SUMMARY
+          elif [[ "${{ needs.test-image.result }}" == "skipped" ]]; then
+            echo "### ⏭️ Test Status: Skipped" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Test Status: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [[ "${{ needs.build-config.outputs.push-enabled }}" == "true" ]]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 🚀 Usage" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+            echo "# 拉取镜像" >> $GITHUB_STEP_SUMMARY
+            FIRST_TAG=$(echo "${{ needs.build-config.outputs.tags }}" | cut -d',' -f1)
+            echo "docker pull $FIRST_TAG" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "# 运行容器" >> $GITHUB_STEP_SUMMARY
+            echo "docker run -it --rm $FIRST_TAG" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          fi
