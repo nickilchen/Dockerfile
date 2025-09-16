@@ -63,6 +63,57 @@ docker-compose -f docker-compose-openjdk.yml up -d
 
 [查看详细文档](./gdal/README_OPENJDK.md)
 
+### GDAL JDK8 GDAL2.4.0镜像
+
+基于OpenJDK 8u342的GDAL 2.4.0（地理空间数据抽象库）镜像，包含完整的GEOS、PROJ、JPEG、HDF5、HDF4和NetCDF支持。
+
+**特性:**
+- 🏗️ 多架构支持 (AMD64, ARM64)
+- 🐧 基于Ubuntu，功能完整
+- 🗺️ GDAL 2.4.0地理空间数据处理能力
+- ☕ 集成OpenJDK 8u342运行环境
+- 📚 包含GEOS、PROJ、JPEG、HDF5、HDF4、NetCDF库支持
+- 🚀 Java绑定完整支持
+- 🔒 安全设计，非root用户运行
+- 📊 包含健康检查
+
+**快速开始:**
+```bash
+# 进入GDAL目录
+cd gdal
+
+# 构建镜像（多架构）
+./build-jdk8-gdal240.sh
+
+# 或使用docker-compose
+docker-compose -f docker-compose-jdk8-gdal240.yml up -d
+```
+
+[查看详细文档](./gdal/README_JDK8_GDAL240.md)
+
+### 最小JDK 8镜像
+
+基于Alpine Linux的最小JDK 8镜像，使用您提供的本地JDK包制作，经过优化以达到最小空间占用。
+
+**特性:**
+- 🐧 基于Alpine Linux，镜像体积小
+- 📦 使用本地JDK 8u431包
+- 🧹 删除不必要的组件以减小空间占用
+- 🔒 安全设计，非root用户运行
+- 📊 包含健康检查
+- 🚀 GitHub Actions自动化构建支持
+
+**快速开始:**
+```bash
+# 进入JDK目录
+cd jdk
+
+# 构建镜像
+./build.sh
+```
+
+[查看详细文档](./jdk/README.md)
+
 ## 🚀 CI/CD 自动化
 
 本项目使用GitHub Actions实现完整的CI/CD流程，支持多架构构建和多环境部署。
@@ -156,11 +207,21 @@ dockerfile/
 ├── gdal/                     # GDAL多架构镜像
 │   ├── Dockerfile           # GDAL镜像构建文件
 │   ├── Dockerfile_openjdk   # GDAL OpenJDK镜像构建文件
+│   ├── Dockerfile_jdk8_gdal240   # GDAL JDK8 GDAL2.4.0镜像构建文件
 │   ├── docker-compose.yml   # 服务编排配置
 │   ├── docker-compose-openjdk.yml   # OpenJDK服务编排配置
+│   ├── docker-compose-jdk8-gdal240.yml   # JDK8 GDAL2.4.0服务编排配置
 │   ├── build.sh            # 多架构构建脚本
 │   ├── build-openjdk.sh    # OpenJDK多架构构建脚本
+│   ├── build-jdk8-gdal240.sh    # JDK8 GDAL2.4.0多架构构建脚本
 │   └── README.md           # GDAL镜像详细文档
+├── jdk/                      # 最小JDK 8镜像
+│   ├── jdk-8u431-linux-x64.tar.gz  # 本地JDK包
+│   ├── Dockerfile          # 标准版Dockerfile
+│   ├── Dockerfile.optimized  # 优化版Dockerfile
+│   ├── build.sh            # 构建脚本
+│   ├── test.sh             # 测试脚本
+│   └── README.md           # JDK镜像详细文档
 └── [其他镜像目录]...
 ```
 
@@ -242,6 +303,21 @@ dockerfile/
 - 📚 包含GEOS、PROJ、JPEG、HDF5、HDF4、NetCDF库支持
 - 🔧 提供GitHub Actions自动化构建
 - 🏗️ 支持多架构（AMD64/ARM64）构建
+
+### v1.2.0 (2025-09-12)
+- 🎉 新增GDAL JDK8 GDAL2.4.0镜像支持
+- ✅ 基于OpenJDK 8u342的GDAL 2.4.0镜像
+- 📚 包含GEOS、PROJ、JPEG、HDF5、HDF4、NetCDF库支持
+- 🔧 提供GitHub Actions自动化构建
+- 🏗️ 支持多架构（AMD64/ARM64）构建
+
+### v1.3.0 (2025-09-12)
+- 🎉 新增最小JDK 8镜像支持
+- ✅ 基于本地JDK 8u431包的最小化镜像
+- 📦 提供标准版和优化版两种构建方式
+- 🧹 删除不必要组件以达到最小空间占用
+- 🚀 GitHub Actions自动化构建支持
+- 📚 完整文档和使用指南
 
 ---
 
