@@ -145,7 +145,7 @@ java -cp .:/usr/local/share/java/gdal.jar -Djava.library.path=/usr/local/lib Gda
 
 ### 扩展基础镜像
 
-```dockerfile
+```
 FROM gdal-jdk8-gdal240:2.4.0-jdk8
 
 # 安装额外的包
@@ -199,10 +199,50 @@ ENV YOUR_VAR=value
 
 3. 检查系统资源是否充足（GDAL构建需要较多内存）
 
-### 运行时问题
+### 多架构运行问题
 
-如果容器运行时出现问题，请检查：
+如果在运行特定架构镜像时遇到"exec format error"错误，请检查以下几点：
 
-1. Java环境变量是否正确设置
-2. GDAL库文件是否存在且可访问
-3. 用户权限是否正确配置
+1. 确保Docker已正确配置多架构支持：
+   ```bash
+   docker run --privileged --rm tonistiigi/binfmt --install all
+   ```
+
+2. 验证镜像是否包含目标架构：
+   ```bash
+   docker manifest inspect your-registry.com/gdal-jdk8-gdal240:2.4.0-jdk8
+   ```
+
+3. 使用正确的平台标志运行镜像：
+   ```bash
+   # 对于ARM64
+   docker run --platform linux/arm64 -it --rm your-image:tag
+   
+   # 对于AMD64
+   docker run --platform linux/amd64 -it --rm your-image:tag
+   ```
+
+4. 如果在Apple Silicon Mac上运行AMD64镜像，确保已安装Rosetta：
+   ```bash
+   softwareupdate --install-rosetta
+   ```
+
+### Java绑定问题
+
+如果Java绑定无法正常工作，请检查以下几点：
+
+1. 确保CLASSPATH环境变量正确设置：
+   ```bash
+   echo $CLASSPATH
+   ```
+
+2. 验证GDAL Java库文件是否存在：
+   ```bash
+   ls -la /usr/local/share/java/gdal.jar
+   ls -la /usr/local/lib/libgdaljni.so
+   ```
+
+3. 检查Java.library.path是否包含GDAL库路径：
+   ```bash
+   java -cp /usr/local/share/java/gdal.jar -Djava.library.path=/usr/local/lib YourApp
+   ```

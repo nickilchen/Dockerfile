@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  # 测试AMD64架构
+  gdal-openjdk-test-amd64:
+    image: gdal-openjdk:3.7.1-openjdk8u342
+    platform: linux/amd64
+    container_name: gdal-openjdk-test-amd64
+    environment:
+      - GDAL_VERSION=3.7.1
+      - GDAL_DATA=/usr/local/share/gdal
+      - JAVA_HOME=/usr/local/openjdk-8
+      - CLASSPATH=/usr/local/share/java/gdal.jar
+    volumes:
+      - ./data:/data:rw
+      - ./workspace:/workspace:rw
+    networks:
+      - gdal-openjdk-test-network
+    stdin_open: true
+    tty: true
+    command: ["bash", "-c", "echo 'AMD64 Test' && gdalinfo --version && java -version"]
+    
+  # 测试ARM64架构
+  gdal-openjdk-test-arm64:
+    image: gdal-openjdk:3.7.1-openjdk8u342
+    platform: linux/arm64
+    container_name: gdal-openjdk-test-arm64
+    environment:
+      - GDAL_VERSION=3.7.1
+      - GDAL_DATA=/usr/local/share/gdal
+      - JAVA_HOME=/usr/local/openjdk-8
+      - CLASSPATH=/usr/local/share/java/gdal.jar
+    volumes:
+      - ./data:/data:rw
+      - ./workspace:/workspace:rw
+    networks:
+      - gdal-openjdk-test-network
+    stdin_open: true
+    tty: true
+    command: ["bash", "-c", "echo 'ARM64 Test' && gdalinfo --version && java -version"]
+
+networks:
+  gdal-openjdk-test-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.22.0.0/16
+
+volumes:
+  gdal-openjdk-test-data:
+    driver: local
+  gdal-openjdk-test-workspace:
+    driver: local

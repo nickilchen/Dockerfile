@@ -2,7 +2,8 @@
 # 包含GEOS、PROJ、JPEG、HDF5、HDF4、NetCDF库并集成到Java
 # 支持多架构部署（AMD64、ARM64）
 
-FROM openjdk:8u342-jdk
+# 使用buildx构建时，Docker会根据目标平台自动选择正确的基础镜像
+FROM --platform=$TARGETPLATFORM openjdk:8u342-jdk
 
 # 设置标签信息
 LABEL maintainer="GDAL OpenJDK Image"

@@ -91,6 +91,8 @@ setup_builder() {
         docker buildx use "$BUILDER_NAME"
     else
         log_info "创建新的构建器: $BUILDER_NAME"
+        # 确保启用了多架构支持
+        docker run --privileged --rm tonistiigi/binfmt --install all
         docker buildx create --name "$BUILDER_NAME" --driver docker-container --use
         docker buildx inspect --bootstrap
     fi

@@ -189,13 +189,15 @@ jobs:
         uses: docker/setup-qemu-action@v3
         with:
           platforms: all
-
+          image: tonistiigi/binfmt:latest
+          
       - name: 🛠️ 设置Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
           driver-opts: |
             network=host
           platforms: ${{ needs.build-config.outputs.platforms }}
+          install: true
 
       - name: 🏷️ 提取元数据
         id: meta
@@ -269,6 +271,11 @@ jobs:
           
           # 为特定平台拉取镜像
           PLATFORM="${{ matrix.platform }}"
+          echo "🔧 平台: $PLATFORM"
+          
+          # 确保QEMU仿真器可用
+          docker run --privileged --rm tonistiigi/binfmt:latest --install $PLATFORM
+          
           docker pull --platform=$PLATFORM $FIRST_TAG
           
           echo "🔍 测试GDAL功能..."

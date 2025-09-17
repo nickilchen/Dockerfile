@@ -145,7 +145,7 @@ java -cp .:/usr/local/share/java/gdal.jar -Djava.library.path=/usr/local/lib Gda
 
 ### 扩展基础镜像
 
-```dockerfile
+```
 FROM gdal-openjdk:3.7.1-openjdk8u342
 
 # 安装额外的包
@@ -172,3 +172,77 @@ ENV YOUR_VAR=value
 本镜像遵循相关组件的许可证：
 - GDAL 3.7.1: MIT/X许可证
 - OpenJDK 8u342: GPL v2 with Classpath Exception
+
+## 故障排除
+
+### 下载问题
+
+如果在构建过程中遇到下载问题，请检查以下几点：
+
+1. 确保网络连接正常
+2. 验证GDAL源代码URL是否可访问
+3. 如果问题持续存在，可以手动下载GDAL 3.7.1源代码包并修改Dockerfile中的URL
+
+### 构建失败
+
+如果构建失败，请尝试以下解决方案：
+
+1. 清理Docker构建缓存：
+   ```bash
+   docker builder prune
+   ```
+
+2. 使用--no-cache选项重新构建：
+   ```bash
+   ./build-openjdk.sh --no-cache
+   ```
+
+3. 检查系统资源是否充足（GDAL构建需要较多内存）
+
+### 多架构运行问题
+
+如果在运行特定架构镜像时遇到"exec format error"错误，请检查以下几点：
+
+1. 确保Docker已正确配置多架构支持：
+   ```bash
+   docker run --privileged --rm tonistiigi/binfmt --install all
+   ```
+
+2. 验证镜像是否包含目标架构：
+   ```bash
+   docker manifest inspect your-registry.com/gdal-openjdk:3.7.1-openjdk8u342
+   ```
+
+3. 使用正确的平台标志运行镜像：
+   ```bash
+   # 对于ARM64
+   docker run --platform linux/arm64 -it --rm your-image:tag
+   
+   # 对于AMD64
+   docker run --platform linux/amd64 -it --rm your-image:tag
+   ```
+
+4. 如果在Apple Silicon Mac上运行AMD64镜像，确保已安装Rosetta：
+   ```bash
+   softwareupdate --install-rosetta
+   ```
+
+### Java绑定问题
+
+如果Java绑定无法正常工作，请检查以下几点：
+
+1. 确保CLASSPATH环境变量正确设置：
+   ```bash
+   echo $CLASSPATH
+   ```
+
+2. 验证GDAL Java库文件是否存在：
+   ```bash
+   ls -la /usr/local/share/java/gdal.jar
+   ls -la /usr/local/lib/libgdaljni.so
+   ```
+
+3. 检查Java.library.path是否包含GDAL库路径：
+   ```bash
+   java -cp /usr/local/share/java/gdal.jar -Djava.library.path=/usr/local/lib YourApp
+   ```

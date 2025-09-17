@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  # 测试AMD64架构
+  gdal-test-amd64:
+    image: gdal-jdk8-gdal240:2.4.0-jdk8
+    platform: linux/amd64
+    container_name: gdal-test-amd64
+    environment:
+      - GDAL_VERSION=2.4.0
+      - GDAL_DATA=/usr/local/share/gdal
+      - JAVA_HOME=/usr/local/openjdk-8
+      - CLASSPATH=/usr/local/share/java/gdal.jar
+    volumes:
+      - ./data:/data:rw
+      - ./workspace:/workspace:rw
+    networks:
+      - gdal-test-network
+    stdin_open: true
+    tty: true
+    command: ["bash", "-c", "echo 'AMD64 Test' && gdalinfo --version && java -version"]
+    
+  # 测试ARM64架构
+  gdal-test-arm64:
+    image: gdal-jdk8-gdal240:2.4.0-jdk8
+    platform: linux/arm64
+    container_name: gdal-test-arm64
+    environment:
+      - GDAL_VERSION=2.4.0
+      - GDAL_DATA=/usr/local/share/gdal
+      - JAVA_HOME=/usr/local/openjdk-8
+      - CLASSPATH=/usr/local/share/java/gdal.jar
+    volumes:
+      - ./data:/data:rw
+      - ./workspace:/workspace:rw
+    networks:
+      - gdal-test-network
+    stdin_open: true
+    tty: true
+    command: ["bash", "-c", "echo 'ARM64 Test' && gdalinfo --version && java -version"]
+
+networks:
+  gdal-test-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16
+
+volumes:
+  gdal-test-data:
+    driver: local
+  gdal-test-workspace:
+    driver: local

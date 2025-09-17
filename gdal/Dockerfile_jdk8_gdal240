@@ -2,7 +2,8 @@
 # 包含GEOS、PROJ、JPEG、HDF5、HDF4、NetCDF库并集成到Java
 # 支持多架构部署（AMD64、ARM64）
 
-FROM openjdk:8u342-jdk
+# 使用buildx构建时，Docker会根据目标平台自动选择正确的基础镜像
+FROM --platform=$TARGETPLATFORM openjdk:8u342-jdk
 
 # 设置标签信息
 LABEL maintainer="GDAL JDK8 GDAL2.4.0 Image"
@@ -78,6 +79,12 @@ RUN cd /tmp && \
     tar -xzf gdal-2.4.0.tar.gz && \
     cd gdal-2.4.0 && \
     # GDAL 2.4.0使用不同的构建系统
+    # 修复Java支持配置，明确指定JDK路径并处理多架构兼容性
+    echo "Finding JVM library path..." && \
+    find /usr/local/openjdk-8 -name "libjvm.so" -type f 2>/dev/null && \
+    JVM_LIB_PATH=$(find /usr/local/openjdk-8 -name "libjvm.so" -type f 2>/dev/null | head -n 1 | xargs dirname) && \
+    echo "JVM library path: $JVM_LIB_PATH" && \
+    echo "Target platform: $TARGETPLATFORM" && \
     ./configure \
         --prefix=/usr/local \
         --with-geos \
@@ -91,8 +98,8 @@ RUN cd /tmp && \
         --with-hdf4 \
         --with-netcdf \
         --without-python \
-        --with-java \
-        --with-jvm-lib=/usr/local/openjdk-8/lib/server \
+        --with-java=/usr/local/openjdk-8 \
+        --with-jvm-lib=$JVM_LIB_PATH \
         --with-jvm-lib-add-rpath \
         --with-hide-internal-symbols \
     && make -j$(nproc) && \
@@ -100,7 +107,10 @@ RUN cd /tmp && \
     # 安装Java绑定
     mkdir -p /usr/local/share/java && \
     cp swig/java/gdal.jar /usr/local/share/java/ && \
+    # 复制Java本地库文件
     cp swig/java/*.so /usr/local/lib/ && \
+    # 复制可能的其他Java库文件
+    find . -name "*.so" -path "*/swig/java/*" -exec cp {} /usr/local/lib/ \; 2>/dev/null || true && \
     ldconfig && \
     cd / && \
     rm -rf /tmp/gdal-2.4.0*
