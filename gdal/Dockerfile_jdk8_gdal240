@@ -41,7 +41,6 @@ RUN apt-get update && \
         xz-utils \
         # 构建工具
         build-essential \
-        cmake \
         make \
         gcc \
         g++ \
@@ -75,9 +74,9 @@ RUN apt-get update && \
 
 # 编译安装GDAL 2.4.0（启用所有需要的库和Java绑定）
 RUN cd /tmp && \
-    wget https://github.com/OSGeo/gdal/releases/download/v${GDAL_VERSION}.tar.gz/gdal-${GDAL_VERSION}.tar.gz && \
-    tar -xzf gdal-${GDAL_VERSION}.tar.gz && \
-    cd gdal-${GDAL_VERSION} && \
+    wget https://download.osgeo.org/gdal/2.4.0/gdal-2.4.0.tar.gz && \
+    tar -xzf gdal-2.4.0.tar.gz && \
+    cd gdal-2.4.0 && \
     # GDAL 2.4.0使用不同的构建系统
     ./configure \
         --prefix=/usr/local \
@@ -104,7 +103,7 @@ RUN cd /tmp && \
     cp swig/java/*.so /usr/local/lib/ && \
     ldconfig && \
     cd / && \
-    rm -rf /tmp/gdal-${GDAL_VERSION}*
+    rm -rf /tmp/gdal-2.4.0*
 
 # 清理构建依赖（保留运行时依赖）
 RUN apt-get remove -y \

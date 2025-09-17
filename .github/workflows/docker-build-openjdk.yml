@@ -1,21 +1,21 @@
-name: 🐳 Build and Push GDAL OpenJDK Image
+name: 🐳 构建并推送GDAL OpenJDK镜像
 
 on:
   # 手动触发
   workflow_dispatch:
     inputs:
       push_to_registry:
-        description: 'Push to registry'
+        description: '是否推送到仓库'
         required: false
         default: 'true'
         type: boolean
       platforms:
-        description: 'Target platforms'
+        description: '目标平台'
         required: false
         default: 'linux/amd64,linux/arm64'
         type: string
       tag_suffix:
-        description: 'Tag suffix (e.g., -dev, -beta)'
+        description: '标签后缀 (例如：-dev, -beta)'
         required: false
         default: ''
         type: string
@@ -57,7 +57,7 @@ env:
 jobs:
   # 构建配置分析
   build-config:
-    name: 📋 Build Configuration
+    name: 📋 构建配置
     runs-on: ubuntu-latest
     outputs:
       registry: ${{ steps.config.outputs.registry }}
@@ -68,7 +68,7 @@ jobs:
       tags: ${{ steps.config.outputs.tags }}
       
     steps:
-      - name: 🔍 Analyze build configuration
+      - name: 🔍 分析构建配置
         id: config
         run: |
           # 确定是否推送
@@ -147,18 +147,18 @@ jobs:
           echo "ali-tags=$ALI_TAGS" >> $GITHUB_OUTPUT
           
           # 显示配置
-          echo "🔧 Build Configuration:"
-          echo "  📦 Registry: ${{ env.REGISTRY }}"
-          echo "  🏷️  Image: $IMAGE_NAME_LOWER"
-          echo "  🏗️  Platforms: $PLATFORMS"
-          echo "  📤 Push: $PUSH_ENABLED"
-          echo "  🔖 GitHub Tags: $TAGS"
-          echo "  🔖 Aliyun Tags: $ALI_TAGS"
-          echo "  🗂️  Cache Key: $CACHE_KEY"
+          echo "🔧 构建配置:"
+          echo "  📦 仓库: ${{ env.REGISTRY }}"
+          echo "  🏷️  镜像: $IMAGE_NAME_LOWER"
+          echo "  🏗️  平台: $PLATFORMS"
+          echo "  📤 推送: $PUSH_ENABLED"
+          echo "  🔖 GitHub标签: $TAGS"
+          echo "  🔖 阿里云标签: $ALI_TAGS"
+          echo "  🗂️  缓存键: $CACHE_KEY"
 
   # 构建和推送镜像
   build-and-push:
-    name: 🏗️ Build and Push
+    name: 🏗️ 构建并推送
     runs-on: ubuntu-latest
     needs: build-config
     permissions:
@@ -166,10 +166,10 @@ jobs:
       packages: write
       
     steps:
-      - name: 📥 Checkout repository
+      - name: 📥 检出代码仓库
         uses: actions/checkout@v4
 
-      - name: 🔐 Log in to Container Registry
+      - name: 🔐 登录到容器仓库
         if: needs.build-config.outputs.push-enabled == 'true'
         uses: docker/login-action@v3
         with:
@@ -177,7 +177,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 🔐 Log in to Aliyun Container Registry
+      - name: 🔐 登录到阿里云容器仓库
         if: needs.build-config.outputs.push-enabled == 'true'
         uses: docker/login-action@v3
         with:
@@ -185,19 +185,19 @@ jobs:
           username: ${{ secrets.ALI_REGISTRY_USERNAME }}
           password: ${{ secrets.ALI_REGISTRY_PASSWORD }}
 
-      - name: 🛠️ Set up QEMU
+      - name: 🛠️ 设置QEMU
         uses: docker/setup-qemu-action@v3
         with:
           platforms: all
 
-      - name: 🛠️ Set up Docker Buildx
+      - name: 🛠️ 设置Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
           driver-opts: |
             network=host
           platforms: ${{ needs.build-config.outputs.platforms }}
 
-      - name: 🏷️ Extract metadata
+      - name: 🏷️ 提取元数据
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -210,13 +210,13 @@ jobs:
             type=sha,prefix={{branch}}-
           labels: |
             org.opencontainers.image.title=GDAL OpenJDK
-            org.opencontainers.image.description=Ubuntu-based GDAL ${{ env.GDAL_VERSION }} with OpenJDK ${{ env.JAVA_VERSION }}
-            org.opencontainers.image.vendor=GDAL Project
+            org.opencontainers.image.description=基于Ubuntu的GDAL ${{ env.GDAL_VERSION }}与OpenJDK ${{ env.JAVA_VERSION }}
+            org.opencontainers.image.vendor=GDAL项目
             gdal.version=${{ env.GDAL_VERSION }}
             java.version=${{ env.JAVA_VERSION }}
             architecture=${{ needs.build-config.outputs.platforms }}
 
-      - name: 🏗️ Build and push Docker image
+      - name: 🏗️ 构建并推送Docker镜像
         uses: docker/build-push-action@v5
         with:
           context: ./gdal
@@ -231,15 +231,15 @@ jobs:
             GDAL_VERSION=${{ env.GDAL_VERSION }}
             BUILDKIT_INLINE_CACHE=1
 
-      - name: 📋 Image digest
+      - name: 📋 镜像摘要
         if: needs.build-config.outputs.push-enabled == 'true'
         run: |
-          echo "🎯 Image digest: ${{ steps.meta.outputs.digest }}"
-          echo "🏷️ Tags: ${{ needs.build-config.outputs.tags }}"
+          echo "🎯 镜像摘要: ${{ steps.meta.outputs.digest }}"
+          echo "🏷️ 标签: ${{ needs.build-config.outputs.tags }}"
 
   # 测试构建的镜像
   test-image:
-    name: 🧪 Test Image
+    name: 🧪 测试镜像
     runs-on: ubuntu-latest
     needs: [build-config, build-and-push]
     if: needs.build-config.outputs.push-enabled == 'true'
@@ -248,43 +248,43 @@ jobs:
         platform: [linux/amd64, linux/arm64]
         
     steps:
-      - name: 📥 Checkout repository
+      - name: 📥 检出代码仓库
         uses: actions/checkout@v4
 
-      - name: 🛠️ Set up Docker Buildx
+      - name: 🛠️ 设置Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: 🔐 Log in to Container Registry
+      - name: 🔐 登录到容器仓库
         uses: docker/login-action@v3
         with:
           registry: ${{ needs.build-config.outputs.registry }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 🧪 Test image functionality
+      - name: 🧪 测试镜像功能
         run: |
           # 获取第一个标签进行测试
           FIRST_TAG=$(echo "${{ needs.build-config.outputs.tags }}" | cut -d',' -f1)
-          echo "🏷️ Testing tag: $FIRST_TAG"
+          echo "🏷️ 测试标签: $FIRST_TAG"
           
           # 为特定平台拉取镜像
           PLATFORM="${{ matrix.platform }}"
           docker pull --platform=$PLATFORM $FIRST_TAG
           
-          echo "🔍 Testing GDAL functionality..."
+          echo "🔍 测试GDAL功能..."
           docker run --rm --platform=$PLATFORM $FIRST_TAG gdalinfo --version
           
-          echo "☕ Testing Java functionality..."
+          echo "☕ 测试Java功能..."
           docker run --rm --platform=$PLATFORM $FIRST_TAG java -version
           
-          echo "🔍 Testing GDAL Java bindings..."
+          echo "🔍 测试GDAL Java绑定..."
           docker run --rm --platform=$PLATFORM $FIRST_TAG ls -la /usr/local/share/java/gdal.jar
           
-          echo "✅ Platform $PLATFORM tests passed!"
+          echo "✅ 平台 $PLATFORM 测试通过!"
 
   # 安全扫描
   security-scan:
-    name: 🔒 Security Scan
+    name: 🔒 安全扫描
     runs-on: ubuntu-latest
     needs: [build-config, build-and-push]
     if: needs.build-config.outputs.push-enabled == 'true'
@@ -292,14 +292,14 @@ jobs:
       security-events: write
       
     steps:
-      - name: 🔍 Run Trivy vulnerability scanner
+      - name: 🔍 运行Trivy漏洞扫描器
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ needs.build-config.outputs.registry }}/${{ needs.build-config.outputs.image-name }}:latest
           format: 'sarif'
           output: 'trivy-results.sarif'
 
-      - name: 📤 Upload Trivy scan results to GitHub Security tab
+      - name: 📤 上传Trivy扫描结果到GitHub安全选项卡
         uses: github/codeql-action/upload-sarif@v2
         if: always()
         with:
@@ -307,44 +307,44 @@ jobs:
 
   # 构建总结
   build-summary:
-    name: 📊 Build Summary
+    name: 📊 构建总结
     runs-on: ubuntu-latest
     needs: [build-config, build-and-push, test-image]
     if: always()
     
     steps:
-      - name: 📋 Create build summary
+      - name: 📋 创建构建总结
         run: |
-          echo "## 🐳 GDAL OpenJDK Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "## 🐳 GDAL OpenJDK构建总结" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📊 Build Information" >> $GITHUB_STEP_SUMMARY
-          echo "- **🏷️ Image**: \`${{ needs.build-config.outputs.image-name }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **🏗️ Platforms**: \`${{ needs.build-config.outputs.platforms }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **📤 Push**: \`${{ needs.build-config.outputs.push-enabled }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **🔖 Tags**: \`${{ needs.build-config.outputs.tags }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **📦 GDAL Version**: \`${{ env.GDAL_VERSION }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **☕ Java Version**: \`${{ env.JAVA_VERSION }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "### 📊 构建信息" >> $GITHUB_STEP_SUMMARY
+          echo "- **🏷️ 镜像**: \`${{ needs.build-config.outputs.image-name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **🏗️ 平台**: \`${{ needs.build-config.outputs.platforms }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **📤 推送**: \`${{ needs.build-config.outputs.push-enabled }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **🔖 标签**: \`${{ needs.build-config.outputs.tags }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **📦 GDAL版本**: \`${{ env.GDAL_VERSION }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **☕ Java版本**: \`${{ env.JAVA_VERSION }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           # 构建状态
           if [[ "${{ needs.build-and-push.result }}" == "success" ]]; then
-            echo "### ✅ Build Status: Success" >> $GITHUB_STEP_SUMMARY
+            echo "### ✅ 构建状态: 成功" >> $GITHUB_STEP_SUMMARY
           else
-            echo "### ❌ Build Status: Failed" >> $GITHUB_STEP_SUMMARY
+            echo "### ❌ 构建状态: 失败" >> $GITHUB_STEP_SUMMARY
           fi
           
           # 测试状态
           if [[ "${{ needs.test-image.result }}" == "success" ]]; then
-            echo "### ✅ Test Status: Passed" >> $GITHUB_STEP_SUMMARY
+            echo "### ✅ 测试状态: 通过" >> $GITHUB_STEP_SUMMARY
           elif [[ "${{ needs.test-image.result }}" == "skipped" ]]; then
-            echo "### ⏭️ Test Status: Skipped" >> $GITHUB_STEP_SUMMARY
+            echo "### ⏭️ 测试状态: 跳过" >> $GITHUB_STEP_SUMMARY
           else
-            echo "### ❌ Test Status: Failed" >> $GITHUB_STEP_SUMMARY
+            echo "### ❌ 测试状态: 失败" >> $GITHUB_STEP_SUMMARY
           fi
           
           if [[ "${{ needs.build-config.outputs.push-enabled }}" == "true" ]]; then
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### 🚀 Usage" >> $GITHUB_STEP_SUMMARY
+            echo "### 🚀 使用方法" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
             echo "# 拉取镜像" >> $GITHUB_STEP_SUMMARY
             FIRST_TAG=$(echo "${{ needs.build-config.outputs.tags }}" | cut -d',' -f1)

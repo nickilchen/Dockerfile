@@ -172,3 +172,37 @@ ENV YOUR_VAR=value
 本镜像遵循相关组件的许可证：
 - GDAL 2.4.0: MIT/X许可证
 - OpenJDK 8u342: GPL v2 with Classpath Exception
+
+## 故障排除
+
+### 下载问题
+
+如果在构建过程中遇到下载问题，请检查以下几点：
+
+1. 确保网络连接正常
+2. 验证GDAL源代码URL是否可访问
+3. 如果问题持续存在，可以手动下载GDAL 2.4.0源代码包并修改Dockerfile中的URL
+
+### 构建失败
+
+如果构建失败，请尝试以下解决方案：
+
+1. 清理Docker构建缓存：
+   ```bash
+   docker builder prune
+   ```
+
+2. 使用--no-cache选项重新构建：
+   ```bash
+   ./build-jdk8-gdal240.sh --no-cache
+   ```
+
+3. 检查系统资源是否充足（GDAL构建需要较多内存）
+
+### 运行时问题
+
+如果容器运行时出现问题，请检查：
+
+1. Java环境变量是否正确设置
+2. GDAL库文件是否存在且可访问
+3. 用户权限是否正确配置
