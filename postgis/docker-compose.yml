@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  postgis:
+    image: postgis/postgis:13-3.5
+    container_name: postgis
+    environment:
+      - POSTGRES_PASSWORD=mysecretpassword
+      - POSTGRES_USER=myuser
+      - POSTGRES_DB=mydb
+      - POSTGRES_HOST_AUTH_METHOD=trust
+    volumes:
+      - postgis-data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    networks:
+      - postgis-network
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U myuser -d mydb"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # PostGIS Adminer (可选)
+  adminer:
+    image: adminer
+    container_name: postgis-adminer
+    ports:
+      - "8080:8080"
+    networks:
+      - postgis-network
+    restart: unless-stopped
+    depends_on:
+      - postgis
+
+networks:
+  postgis-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.23.0.0/16
+
+volumes:
+  postgis-data:
+    driver: local

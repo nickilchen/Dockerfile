@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       push_to_registry:
-        description: '是否推送到仓库'
+        description: '推送至仓库'
         required: false
         default: 'true'
         type: boolean
@@ -29,9 +29,20 @@ on:
       - 'v*.*.*'
       - 'gdal-*'
     paths:
+      # 核心构建文件
       - 'gdal/Dockerfile_openjdk'
       - 'gdal/build-openjdk.sh'
+      # 测试文件
+      - 'gdal/GdalOpenJdkTest.java'
+      # 配置文件
+      - 'gdal/docker-compose-openjdk.yml'
+      - 'gdal/docker-compose-test-openjdk-multi-arch.yml'
+      - 'gdal/test-openjdk.sh'
+      - 'gdal/test-openjdk-multi-arch.sh'
+      # 工作流文件
       - '.github/workflows/docker-build-openjdk.yml'
+      # README文档
+      - 'gdal/README_OPENJDK.md'
 
   # Pull Request时触发（仅构建，不推送）
   pull_request:
@@ -39,10 +50,20 @@ on:
       - main
       - develop
     paths:
+      # 核心构建文件
       - 'gdal/Dockerfile_openjdk'
       - 'gdal/build-openjdk.sh'
+      # 测试文件
+      - 'gdal/GdalOpenJdkTest.java'
+      # 配置文件
+      - 'gdal/docker-compose-openjdk.yml'
+      - 'gdal/docker-compose-test-openjdk-multi-arch.yml'
+      - 'gdal/test-openjdk.sh'
+      - 'gdal/test-openjdk-multi-arch.sh'
+      # 工作流文件
       - '.github/workflows/docker-build-openjdk.yml'
-
+      # README文档
+      - 'gdal/README_OPENJDK.md'
 env:
   # 镜像仓库配置
   REGISTRY: ghcr.io

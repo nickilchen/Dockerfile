@@ -125,6 +125,7 @@ cd jdk
 - 📦 **版本管理**: 自动化版本发布和标签管理
 - 🚀 **性能优化**: 智能缓存和构建加速
 - 🔒 **安全扫描**: 自动漏洞检测和安全验证
+- 🎯 **智能触发**: 基于路径过滤的精准触发机制
 
 ### 🏷️ 镜像标签
 
@@ -134,6 +135,16 @@ cd jdk
 | `dev` | 开发版本 | 开发分支推送时 |
 | `v1.2.3` | 具体版本 | 标签发布时 |
 | `stable` | 稳定版本 | 正式发布时 |
+
+### 🎯 智能触发机制
+
+本项目实现了基于路径过滤的智能触发机制，确保只有相关文件变动才会触发对应的GitHub Actions工作流更新：
+
+- **GDAL JDK8 GDAL2.4.0**: 仅当`gdal/Dockerfile_jdk8_gdal240`、`gdal/build-jdk8-gdal240.sh`等相关文件变动时触发
+- **GDAL OpenJDK**: 仅当`gdal/Dockerfile_openjdk`、`gdal/build-openjdk.sh`等相关文件变动时触发
+- **PostGIS**: 仅当`postgis/**`目录下相关文件变动时触发
+
+详细配置请查看 [路径过滤配置指南](PATH_FILTERING.md)。
 
 ### 🚀 快速使用
 

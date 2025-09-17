@@ -15,12 +15,17 @@ services:
       - JAVA_HOME=/usr/local/openjdk-8
       - CLASSPATH=/usr/local/share/java/gdal.jar
       - GDAL_CACHEMAX=256
+      - JAVA_OPTS=-Djava.library.path=/usr/local/lib
     
     # 卷挂载配置
     volumes:
       - ./data:/data:rw               # 数据输入输出目录
       - ./workspace:/workspace:rw     # 工作空间
       - ./GdalJdk8Gdal240Test.java:/workspace/GdalJdk8Gdal240Test.java:ro  # Java测试文件
+      - ./SimpleGdalTest.java:/workspace/SimpleGdalTest.java:ro  # 简单Java测试文件
+    
+    # 平台指定（可选）
+    # platform: linux/amd64
     
     # 资源限制
     deploy:
@@ -49,3 +54,51 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+  # 测试服务
+  gdal-jdk8-gdal240-test:
+    build:
+      context: .
+      dockerfile: Dockerfile_jdk8_gdal240
+    image: gdal-jdk8-gdal240:2.4.0-jdk8
+    container_name: gdal-jdk8-gdal240-test-container
+    
+    # 环境变量配置
+    environment:
+      - GDAL_VERSION=2.4.0
+      - GDAL_DATA=/usr/local/share/gdal
+      - JAVA_HOME=/usr/local/openjdk-8
+      - CLASSPATH=/usr/local/share/java/gdal.jar
+      - JAVA_OPTS=-Djava.library.path=/usr/local/lib
+    
+    # 卷挂载配置
+    volumes:
+      - ./data:/data:rw
+      - ./workspace:/workspace:rw
+      - ./GdalJdk8Gdal240Test.java:/workspace/GdalJdk8Gdal240Test.java:ro
+      - ./SimpleGdalTest.java:/workspace/SimpleGdalTest.java:ro
+    
+    # 工作目录
+    working_dir: /workspace
+    
+    # 运行测试命令
+    command: >
+      bash -c "
+        echo '=== GDAL版本测试 ===' &&
+        gdalinfo --version &&
+        echo '=== Java版本测试 ===' &&
+        java -version &&
+        echo '=== Java绑定文件检查 ===' &&
+        if [ -f '/usr/local/share/java/gdal.jar' ]; then
+          ls -la /usr/local/share/java/gdal.jar &&
+          echo 'Java绑定文件存在';
+        else
+          echo '警告: Java绑定文件不存在';
+        fi &&
+        echo '=== 本地库文件检查 ===' &&
+        ls -la /usr/local/lib/ | grep gdal || echo '未找到GDAL本地库文件' &&
+        echo '=== 简单Java测试 ===' &&
+        javac SimpleGdalTest.java &&
+        java -Djava.library.path=/usr/local/lib SimpleGdalTest &&
+        echo '=== 测试完成 ==='
+      "

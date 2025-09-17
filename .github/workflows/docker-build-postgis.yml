@@ -1,0 +1,466 @@
+name: 🐳 构建并推送PostGIS镜像
+
+on:
+  # 手动触发
+  workflow_dispatch:
+    inputs:
+      push_to_registry:
+        description: '推送至仓库'
+        required: false
+        default: 'true'
+        type: boolean
+      platforms:
+        description: '目标平台'
+        required: false
+        default: 'linux/amd64,linux/arm64'
+        type: string
+      tag_suffix:
+        description: '标签后缀（例如：-dev, -beta）'
+        required: false
+        default: ''
+        type: string
+
+  # 推送触发（分支和标签）
+  push:
+    branches:
+      - main
+      - develop
+    tags:
+      - 'v*.*.*'
+      - 'postgis-*'
+    paths:
+      # PostGIS核心文件
+      - 'postgis/**/Dockerfile'
+      - 'postgis/**/alpine/Dockerfile'
+      - 'postgis/**/initdb-postgis.sh'
+      - 'postgis/**/update-postgis.sh'
+      # 构建和测试脚本
+      - 'postgis/build.sh'
+      - 'postgis/test.sh'
+      - 'postgis/list-versions.sh'
+      - 'postgis/verify-build-system.sh'
+      # 配置文件
+      - 'postgis/docker-compose.yml'
+      # 工作流文件
+      - '.github/workflows/docker-build-postgis.yml'
+      # README文档
+      - 'postgis/README.md'
+
+  # Pull Request时触发（仅构建，不推送）
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      # PostGIS核心文件
+      - 'postgis/**/Dockerfile'
+      - 'postgis/**/alpine/Dockerfile'
+      - 'postgis/**/initdb-postgis.sh'
+      - 'postgis/**/update-postgis.sh'
+      # 构建和测试脚本
+      - 'postgis/build.sh'
+      - 'postgis/test.sh'
+      - 'postgis/list-versions.sh'
+      - 'postgis/verify-build-system.sh'
+      # 配置文件
+      - 'postgis/docker-compose.yml'
+      # 工作流文件
+      - '.github/workflows/docker-build-postgis.yml'
+      # README文档
+      - 'postgis/README.md'
+
+env:
+  # 镜像仓库配置
+  REGISTRY: ghcr.io
+  ALI_REGISTRY: registry.cn-hangzhou.aliyuncs.com
+  IMAGE_NAME: ${{ github.repository }}/postgis
+  ALI_IMAGE_NAME: nickilchen/postgis
+  
+  # 默认PostGIS配置
+  POSTGIS_VERSION: "3.5"
+  POSTGRES_VERSION: "13"
+
+jobs:
+  # 发现PostGIS版本
+  discover-versions:
+    name: 🔍 Discover PostGIS Versions
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.discover.outputs.matrix }}
+    steps:
+      - name: 📥 检出代码仓库
+        uses: actions/checkout@v4
+
+      - name: 🔍 发现PostGIS版本
+        id: discover
+        run: |
+          # 查找所有PostGIS版本目录
+          POSTGIS_DIRS=$(find postgis -maxdepth 2 -type d -name "*-*" | sort)
+          echo "发现的PostGIS目录:"
+          echo "$POSTGIS_DIRS"
+          
+          # 构建矩阵配置
+          MATRIX_JSON="["
+          FIRST=true
+          
+          for dir in $POSTGIS_DIRS; do
+            # 检查是否存在alpine目录
+            if [ -d "$dir/alpine" ]; then
+              # 提取版本信息
+              if [[ $dir =~ postgis/([0-9]+)-([0-9.]+) ]]; then
+                PG_VERSION="${BASH_REMATCH[1]}"
+                POSTGIS_VERSION="${BASH_REMATCH[2]}"
+                
+                if [ "$FIRST" = true ]; then
+                  FIRST=false
+                else
+                  MATRIX_JSON="${MATRIX_JSON},"
+                fi
+                
+                MATRIX_JSON="${MATRIX_JSON}{\"pg_version\":\"$PG_VERSION\",\"postgis_version\":\"$POSTGIS_VERSION\",\"path\":\"$dir\"}"
+              fi
+            fi
+          done
+          
+          MATRIX_JSON="${MATRIX_JSON}]"
+          
+          echo "矩阵配置: $MATRIX_JSON"
+          echo "matrix=$MATRIX_JSON" >> $GITHUB_OUTPUT
+
+  # 构建配置分析
+  build-config:
+    name: 📋 Build Configuration
+    runs-on: ubuntu-latest
+    outputs:
+      registry: ${{ steps.config.outputs.registry }}
+      image-name: ${{ steps.config.outputs.image-name }}
+      platforms: ${{ steps.config.outputs.platforms }}
+      push-enabled: ${{ steps.config.outputs.push-enabled }}
+      cache-key: ${{ steps.config.outputs.cache-key }}
+    steps:
+      - name: 🔍 分析构建配置
+        id: config
+        run: |
+          # 确定是否推送
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            PUSH_ENABLED="false"
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            PUSH_ENABLED="${{ inputs.push_to_registry }}"
+          else
+            PUSH_ENABLED="true"
+          fi
+          
+          # 确定平台
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.platforms }}" ]]; then
+            PLATFORMS="${{ inputs.platforms }}"
+          else
+            PLATFORMS="linux/amd64,linux/arm64"
+          fi
+          
+          # 生成缓存键
+          CACHE_KEY="postgis-multi-arch-$(echo '$PLATFORMS' | tr ',' '-' | tr '/' '-')"
+          
+          # 输出配置
+          IMAGE_NAME_LOWER=$(echo "${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
+          echo "registry=${{ env.REGISTRY }}" >> $GITHUB_OUTPUT
+          echo "image-name=$IMAGE_NAME_LOWER" >> $GITHUB_OUTPUT
+          echo "platforms=$PLATFORMS" >> $GITHUB_OUTPUT
+          echo "push-enabled=$PUSH_ENABLED" >> $GITHUB_OUTPUT
+          echo "cache-key=$CACHE_KEY" >> $GITHUB_OUTPUT
+          
+          # 显示配置
+          echo "🔧 构建配置:"
+          echo "  📦 仓库: ${{ env.REGISTRY }}"
+          echo "  🏷️  镜像: $IMAGE_NAME_LOWER"
+          echo "  🏗️  平台: $PLATFORMS"
+          echo "  📤 推送: $PUSH_ENABLED"
+          echo "  🗂️  缓存键: $CACHE_KEY"
+
+  # 构建和推送镜像
+  build-and-push:
+    name: 🏗️ Build and Push PostGIS ${{ matrix.pg_version }}-${{ matrix.postgis_version }}
+    runs-on: ubuntu-latest
+    needs: [discover-versions, build-config]
+    strategy:
+      matrix:
+        include: ${{ fromJson(needs.discover-versions.outputs.matrix) }}
+    permissions:
+      contents: read
+      packages: write
+      
+    steps:
+      - name: 📥 检出代码仓库
+        uses: actions/checkout@v4
+
+      - name: 🔐 登录容器仓库
+        if: needs.build-config.outputs.push-enabled == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ needs.build-config.outputs.registry }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🔐 登录阿里云容器仓库
+        if: needs.build-config.outputs.push-enabled == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ALI_REGISTRY }}
+          username: ${{ secrets.ALI_REGISTRY_USERNAME }}
+          password: ${{ secrets.ALI_REGISTRY_PASSWORD }}
+
+      - name: 🛠️ 设置QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: all
+          image: tonistiigi/binfmt:latest
+          
+      - name: 🛠️ 设置Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            network=host
+          platforms: ${{ needs.build-config.outputs.platforms }}
+          install: true
+
+      - name: 🏷️ 生成标签
+        id: meta
+        run: |
+          # 生成标签
+          REGISTRY="${{ needs.build-config.outputs.registry }}"
+          IMAGE_NAME="${{ needs.build-config.outputs.image-name }}"
+          PG_VERSION="${{ matrix.pg_version }}"
+          POSTGIS_VERSION="${{ matrix.postgis_version }}"
+          TAG_SUFFIX="${{ inputs.tag_suffix || '' }}"
+          BRANCH_NAME="${{ github.ref_name }}"
+          
+          # 基本标签
+          TAGS=""
+          
+          # 根据事件类型确定标签
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            # 标签推送
+            if [[ "${{ github.ref_name }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              VERSION="${{ github.ref_name }}"
+              TAGS="${REGISTRY}/${IMAGE_NAME}:${PG_VERSION}-${POSTGIS_VERSION}${TAG_SUFFIX}"
+              TAGS="${TAGS},${REGISTRY}/${IMAGE_NAME}:${PG_VERSION}-${POSTGIS_VERSION//./}-${TAG_SUFFIX}"
+            else
+              TAGS="${REGISTRY}/${IMAGE_NAME}:${{ github.ref_name }}-${PG_VERSION}-${POSTGIS_VERSION}${TAG_SUFFIX}"
+            fi
+          elif [[ "$BRANCH_NAME" == "main" ]]; then
+            # 主分支
+            TAGS="${REGISTRY}/${IMAGE_NAME}:${PG_VERSION}-${POSTGIS_VERSION}${TAG_SUFFIX}"
+            TAGS="${TAGS},${REGISTRY}/${IMAGE_NAME}:${PG_VERSION}-${POSTGIS_VERSION//./}-${TAG_SUFFIX}"
+            TAGS="${TAGS},${REGISTRY}/${IMAGE_NAME}:latest${TAG_SUFFIX}"
+          elif [[ "$BRANCH_NAME" == "develop" ]]; then
+            # 开发分支
+            TAGS="${REGISTRY}/${IMAGE_NAME}:${PG_VERSION}-${POSTGIS_VERSION}-dev${TAG_SUFFIX}"
+          else
+            # 其他分支或PR
+            SAFE_BRANCH=$(echo "$BRANCH_NAME" | sed 's/[^a-zA-Z0-9.-]/-/g')
+            TAGS="${REGISTRY}/${IMAGE_NAME}:${PG_VERSION}-${POSTGIS_VERSION}-${SAFE_BRANCH}${TAG_SUFFIX}"
+          fi
+          
+          # 阿里云标签
+          ALI_TAGS=""
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            if [[ "${{ github.ref_name }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              ALI_TAGS="${{ env.ALI_REGISTRY }}/${{ env.ALI_IMAGE_NAME }}:${PG_VERSION}-${POSTGIS_VERSION}${TAG_SUFFIX}"
+              ALI_TAGS="${ALI_TAGS},${{ env.ALI_REGISTRY }}/${{ env.ALI_IMAGE_NAME }}:${PG_VERSION}-${POSTGIS_VERSION//./}-${TAG_SUFFIX}"
+            else
+              ALI_TAGS="${{ env.ALI_REGISTRY }}/${{ env.ALI_IMAGE_NAME }}:${{ github.ref_name }}-${PG_VERSION}-${POSTGIS_VERSION}${TAG_SUFFIX}"
+            fi
+          elif [[ "$BRANCH_NAME" == "main" ]]; then
+            ALI_TAGS="${{ env.ALI_REGISTRY }}/${{ env.ALI_IMAGE_NAME }}:${PG_VERSION}-${POSTGIS_VERSION}${TAG_SUFFIX}"
+            ALI_TAGS="${ALI_TAGS},${{ env.ALI_REGISTRY }}/${{ env.ALI_IMAGE_NAME }}:${PG_VERSION}-${POSTGIS_VERSION//./}-${TAG_SUFFIX}"
+            ALI_TAGS="${ALI_TAGS},${{ env.ALI_REGISTRY }}/${{ env.ALI_IMAGE_NAME }}:latest${TAG_SUFFIX}"
+          elif [[ "$BRANCH_NAME" == "develop" ]]; then
+            ALI_TAGS="${{ env.ALI_REGISTRY }}/${{ env.ALI_IMAGE_NAME }}:${PG_VERSION}-${POSTGIS_VERSION}-dev${TAG_SUFFIX}"
+          else
+            ALI_TAGS="${{ env.ALI_REGISTRY }}/${{ env.ALI_IMAGE_NAME }}:${PG_VERSION}-${POSTGIS_VERSION}-${SAFE_BRANCH}${TAG_SUFFIX}"
+          fi
+          
+          # 合并所有标签
+          ALL_TAGS="$TAGS"
+          if [[ -n "$ALI_TAGS" ]]; then
+            ALL_TAGS="${ALL_TAGS},${ALI_TAGS}"
+          fi
+          
+          echo "tags=$ALL_TAGS" >> $GITHUB_OUTPUT
+          echo "ali-tags=$ALI_TAGS" >> $GITHUB_OUTPUT
+          
+          echo "🏷️ 生成的标签:"
+          echo "  GitHub: $TAGS"
+          echo "  阿里云: $ALI_TAGS"
+
+      - name: 🏗️ 构建并推送Docker镜像
+        uses: docker/build-push-action@v5
+        with:
+          context: ./${{ matrix.path }}/alpine
+          file: ./${{ matrix.path }}/alpine/Dockerfile
+          platforms: ${{ needs.build-config.outputs.platforms }}
+          push: ${{ needs.build-config.outputs.push-enabled }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: |
+            org.opencontainers.image.title=PostGIS ${{ matrix.postgis_version }} with PostgreSQL ${{ matrix.pg_version }}
+            org.opencontainers.image.description=PostGIS ${{ matrix.postgis_version }} spatial database extension with PostgreSQL ${{ matrix.pg_version }} Alpine
+            org.opencontainers.image.vendor=PostGIS Project
+            postgis.version=${{ matrix.postgis_version }}
+            postgres.version=${{ matrix.pg_version }}
+            architecture=${{ needs.build-config.outputs.platforms }}
+          cache-from: type=gha,scope=${{ needs.build-config.outputs.cache-key }}-${{ matrix.pg_version }}-${{ matrix.postgis_version }}
+          cache-to: type=gha,mode=max,scope=${{ needs.build-config.outputs.cache-key }}-${{ matrix.pg_version }}-${{ matrix.postgis_version }}
+          build-args: |
+            BASE_IMAGE=postgres:${{ matrix.pg_version }}-alpine
+            BUILDKIT_INLINE_CACHE=1
+
+      - name: 📋 镜像摘要
+        if: needs.build-config.outputs.push-enabled == 'true'
+        run: |
+          echo "🎯 镜像摘要: ${{ steps.meta.outputs.digest }}"
+          echo "🏷️ 标签: ${{ steps.meta.outputs.tags }}"
+
+  # 测试构建的镜像
+  test-image:
+    name: 🧪 Test PostGIS Images
+    runs-on: ubuntu-latest
+    needs: [discover-versions, build-config, build-and-push]
+    if: needs.build-config.outputs.push-enabled == 'true'
+    strategy:
+      matrix:
+        platform: [linux/amd64, linux/arm64]
+        include: ${{ fromJson(needs.discover-versions.outputs.matrix) }}
+    steps:
+      - name: 📥 检出代码仓库
+        uses: actions/checkout@v4
+
+      - name: 🛠️ 设置Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🔐 登录容器仓库
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ needs.build-config.outputs.registry }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🧪 测试镜像功能
+        run: |
+          # 生成测试标签
+          REGISTRY="${{ needs.build-config.outputs.registry }}"
+          IMAGE_NAME="${{ needs.build-config.outputs.image-name }}"
+          PG_VERSION="${{ matrix.pg_version }}"
+          POSTGIS_VERSION="${{ matrix.postgis_version }}"
+          TAG_SUFFIX="${{ inputs.tag_suffix || '' }}"
+          PLATFORM="${{ matrix.platform }}"
+          
+          # 测试标签
+          TEST_TAG="${REGISTRY}/${IMAGE_NAME}:${PG_VERSION}-${POSTGIS_VERSION}${TAG_SUFFIX}"
+          
+          echo "🏷️ 测试标签: $TEST_TAG"
+          echo "🔧 平台: $PLATFORM"
+          
+          # 确保QEMU仿真器可用
+          docker run --privileged --rm tonistiigi/binfmt:latest --install $PLATFORM
+          
+          # 拉取镜像
+          docker pull --platform=$PLATFORM $TEST_TAG
+          
+          # 测试PostgreSQL和PostGIS功能
+          echo "🔍 测试PostgreSQL和PostGIS功能..."
+          docker run --rm --platform=$PLATFORM \
+            -e POSTGRES_PASSWORD=testpass \
+            -e POSTGRES_USER=testuser \
+            -e POSTGRES_DB=testdb \
+            $TEST_TAG \
+            pg_isready
+          
+          echo "✅ 平台 $PLATFORM PostgreSQL功能测试通过!"
+          
+          # 测试PostGIS扩展
+          echo "🔍 测试PostGIS扩展..."
+          docker run --rm --platform=$PLATFORM \
+            -e POSTGRES_PASSWORD=testpass \
+            -e POSTGRES_USER=testuser \
+            -e POSTGRES_DB=testdb \
+            $TEST_TAG \
+            postgres -c 'SELECT PostGIS_Version();'
+          
+          echo "✅ 平台 $PLATFORM PostGIS扩展测试通过!"
+
+  # 安全扫描
+  security-scan:
+    name: 🔒 Security Scan
+    runs-on: ubuntu-latest
+    needs: [discover-versions, build-config, build-and-push]
+    if: needs.build-config.outputs.push-enabled == 'true'
+    strategy:
+      matrix:
+        include: ${{ fromJson(needs.discover-versions.outputs.matrix) }}
+    permissions:
+      security-events: write
+      
+    steps:
+      - name: 🔍 运行Trivy漏洞扫描器
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ needs.build-config.outputs.registry }}/${{ needs.build-config.outputs.image-name }}:${{ matrix.pg_version }}-${{ matrix.postgis_version }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: 📤 上传Trivy扫描结果到GitHub安全选项卡
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  # 构建总结
+  build-summary:
+    name: 📊 Build Summary
+    runs-on: ubuntu-latest
+    needs: [discover-versions, build-config, build-and-push, test-image]
+    if: always()
+    
+    steps:
+      - name: 📋 创建构建总结
+        run: |
+          echo "## 🐳 PostGIS Multi-Arch Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📊 Build Information" >> $GITHUB_STEP_SUMMARY
+          echo "- **🏷️ Image**: \`${{ needs.build-config.outputs.image-name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **🏗️ Platforms**: \`${{ needs.build-config.outputs.platforms }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **📤 Push**: \`${{ needs.build-config.outputs.push-enabled }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # 构建状态
+          if [[ "${{ needs.build-and-push.result }}" == "success" ]]; then
+            echo "### ✅ Build Status: Success" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Build Status: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # 测试状态
+          if [[ "${{ needs.test-image.result }}" == "success" ]]; then
+            echo "### ✅ Test Status: Passed" >> $GITHUB_STEP_SUMMARY
+          elif [[ "${{ needs.test-image.result }}" == "skipped" ]]; then
+            echo "### ⏭️ Test Status: Skipped" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Test Status: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [[ "${{ needs.build-config.outputs.push-enabled }}" == "true" ]]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 🚀 Usage" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+            echo "# 拉取镜像示例" >> $GITHUB_STEP_SUMMARY
+            echo "docker pull ${{ needs.build-config.outputs.registry }}/${{ needs.build-config.outputs.image-name }}:13-3.5" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "# 运行容器示例" >> $GITHUB_STEP_SUMMARY
+            echo "docker run -d \\" >> $GITHUB_STEP_SUMMARY
+            echo "  --name postgis \\" >> $GITHUB_STEP_SUMMARY
+            echo "  -e POSTGRES_PASSWORD=mysecretpassword \\" >> $GITHUB_STEP_SUMMARY
+            echo "  -e POSTGRES_USER=myuser \\" >> $GITHUB_STEP_SUMMARY
+            echo "  -e POSTGRES_DB=mydb \\" >> $GITHUB_STEP_SUMMARY
+            echo "  -p 5432:5432 \\" >> $GITHUB_STEP_SUMMARY
+            echo "  ${{ needs.build-config.outputs.registry }}/${{ needs.build-config.outputs.image-name }}:13-3.5" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          fi

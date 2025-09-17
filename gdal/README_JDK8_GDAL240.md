@@ -246,3 +246,53 @@ ENV YOUR_VAR=value
    ```bash
    java -cp /usr/local/share/java/gdal.jar -Djava.library.path=/usr/local/lib YourApp
    ```
+
+4. 如果gdal.jar文件不存在，可能是由于GDAL 2.4.0的Java绑定构建问题。在这种情况下：
+   - 检查构建日志中是否有Java绑定构建错误
+   - 确保构建环境中安装了swig和ant工具
+   - 尝试手动构建Java绑定：
+     ```bash
+     cd /tmp/gdal-2.4.0/swig/java
+     make clean
+     make
+     ```
+
+5. 如果仍然无法解决，可以使用反射方式动态加载GDAL类，避免编译时依赖：
+   ```java
+   // 使用反射加载GDAL类
+   Class<?> gdalClass = Class.forName("org.gdal.gdal.gdal");
+   ```
+
+## 调试和日志
+
+### 启用调试模式构建
+
+使用--debug选项启用详细构建日志：
+
+```bash
+./build-jdk8-gdal240.sh --debug
+```
+
+### 查看构建日志
+
+查看详细的构建过程输出，特别关注Java绑定构建部分：
+
+```bash
+# 查看特定阶段的日志
+docker buildx build --progress=plain -f Dockerfile_jdk8_gdal240 .
+```
+
+### 验证Java绑定
+
+在容器中验证Java绑定是否正确安装：
+
+```bash
+# 检查Java绑定文件
+docker run --rm gdal-jdk8-gdal240:2.4.0-jdk8 ls -la /usr/local/share/java/
+
+# 检查本地库文件
+docker run --rm gdal-jdk8-gdal240:2.4.0-jdk8 ls -la /usr/local/lib/ | grep gdal
+
+# 测试Java绑定加载
+docker run --rm gdal-jdk8-gdal240:2.4.0-jdk8 java -cp /usr/local/share/java/gdal.jar org.gdal.gdal.gdalinfo --version
+```

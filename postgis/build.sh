@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# 基于JDK8的GDAL 2.4.0镜像构建脚本（支持多架构）
+# PostGIS多架构镜像构建脚本
 
 set -e  # 遇到错误时退出
 
@@ -29,13 +29,14 @@ log_error() {
 
 # 配置变量
 REGISTRY=${REGISTRY:-""}
-IMAGE_NAME=${IMAGE_NAME:-"gdal-jdk8-gdal240"}
-TAG=${TAG:-"2.4.0-jdk8"}
+IMAGE_NAME=${IMAGE_NAME:-"postgis"}
 PLATFORMS=${PLATFORMS:-"linux/amd64,linux/arm64"}
 BUILD_ARGS=${BUILD_ARGS:-""}
 PUSH=${PUSH:-"false"}
 NO_CACHE=${NO_CACHE:-"false"}
-DEBUG=${DEBUG:-"false"}
+POSTGRES_VERSION=${POSTGRES_VERSION:-"13"}
+POSTGIS_VERSION=${POSTGIS_VERSION:-"3.5"}
+TAG_SUFFIX=${TAG_SUFFIX:-""}
 
 # 完整镜像名称
 if [ -n "$REGISTRY" ]; then
@@ -46,13 +47,14 @@ fi
 
 # 显示构建信息
 show_build_info() {
-    log_info "=== GDAL JDK8 GDAL2.4.0镜像构建配置 ==="
-    log_info "镜像名称: ${FULL_IMAGE_NAME}:${TAG}"
+    log_info "=== PostGIS镜像构建配置 ==="
+    log_info "PostgreSQL版本: ${POSTGRES_VERSION}"
+    log_info "PostGIS版本: ${POSTGIS_VERSION}"
+    log_info "镜像名称: ${FULL_IMAGE_NAME}:${POSTGRES_VERSION}-${POSTGIS_VERSION}${TAG_SUFFIX}"
     log_info "支持平台: ${PLATFORMS}"
     log_info "构建参数: ${BUILD_ARGS}"
     log_info "推送到仓库: ${PUSH}"
     log_info "使用缓存: $([ "$NO_CACHE" = "true" ] && echo "否" || echo "是")"
-    log_info "调试模式: ${DEBUG}"
     echo
 }
 
@@ -72,9 +74,12 @@ check_dependencies() {
         exit 1
     fi
     
-    # 检查Dockerfile
-    if [ ! -f "Dockerfile_jdk8_gdal240" ]; then
-        log_error "当前目录下没有找到Dockerfile_jdk8_gdal240"
+    # 检查PostGIS目录
+    POSTGIS_DIR="postgis/${POSTGRES_VERSION}-${POSTGIS_VERSION}/alpine"
+    if [ ! -d "$POSTGIS_DIR" ]; then
+        log_error "PostGIS目录不存在: $POSTGIS_DIR"
+        log_info "可用的PostGIS版本:"
+        find postgis -maxdepth 2 -type d -name "*-*" | sort
         exit 1
     fi
     
@@ -85,7 +90,7 @@ check_dependencies() {
 setup_builder() {
     log_info "设置Docker Buildx构建器..."
     
-    BUILDER_NAME="gdal-jdk8-gdal240-builder"
+    BUILDER_NAME="postgis-builder"
     
     # 检查构建器是否存在
     if docker buildx inspect "$BUILDER_NAME" &> /dev/null; then
@@ -104,13 +109,16 @@ setup_builder() {
 
 # 构建镜像
 build_image() {
-    log_info "开始构建GDAL JDK8 GDAL2.4.0多架构镜像..."
+    log_info "开始构建PostGIS多架构镜像..."
+    
+    # 确定PostGIS目录
+    POSTGIS_DIR="postgis/${POSTGRES_VERSION}-${POSTGIS_VERSION}/alpine"
     
     # 构建命令参数
     BUILD_CMD="docker buildx build"
     BUILD_CMD="$BUILD_CMD --platform $PLATFORMS"
-    BUILD_CMD="$BUILD_CMD --tag ${FULL_IMAGE_NAME}:${TAG}"
-    BUILD_CMD="$BUILD_CMD -f Dockerfile_jdk8_gdal240"
+    BUILD_CMD="$BUILD_CMD --tag ${FULL_IMAGE_NAME}:${POSTGRES_VERSION}-${POSTGIS_VERSION}${TAG_SUFFIX}"
+    BUILD_CMD="$BUILD_CMD -f $POSTGIS_DIR/Dockerfile"
     
     # 添加构建参数
     if [ -n "$BUILD_ARGS" ]; then
@@ -122,11 +130,6 @@ build_image() {
         BUILD_CMD="$BUILD_CMD --no-cache"
     fi
     
-    # 调试模式
-    if [ "$DEBUG" = "true" ]; then
-        BUILD_CMD="$BUILD_CMD --progress=plain"
-    fi
-    
     # 推送设置
     if [ "$PUSH" = "true" ]; then
         BUILD_CMD="$BUILD_CMD --push"
@@ -135,8 +138,8 @@ build_image() {
         log_warning "镜像将只构建到本地，不会推送到仓库"
     fi
     
-    # 添加当前目录作为构建上下文
-    BUILD_CMD="$BUILD_CMD ."
+    # 添加构建上下文
+    BUILD_CMD="$BUILD_CMD $POSTGIS_DIR"
     
     log_info "执行构建命令: $BUILD_CMD"
     
@@ -160,12 +163,12 @@ verify_build() {
         log_info "验证本地镜像..."
         
         # 检查镜像是否存在
-        if docker images "${FULL_IMAGE_NAME}" | grep -q "${TAG}"; then
+        if docker images "${FULL_IMAGE_NAME}" | grep -q "${POSTGRES_VERSION}-${POSTGIS_VERSION}${TAG_SUFFIX}"; then
             log_success "本地镜像验证通过"
             
             # 显示镜像信息
             log_info "镜像详细信息:"
-            docker images "${FULL_IMAGE_NAME}:${TAG}" --format "table {{.Repository}}\t{{.Tag}}\t{{.ID}}\t{{.Size}}\t{{.CreatedAt}}"
+            docker images "${FULL_IMAGE_NAME}:${POSTGRES_VERSION}-${POSTGIS_VERSION}${TAG_SUFFIX}" --format "table {{.Repository}}\t{{.Tag}}\t{{.ID}}\t{{.Size}}\t{{.CreatedAt}}"
         else
             log_error "本地镜像验证失败"
             exit 1
@@ -175,45 +178,18 @@ verify_build() {
     fi
 }
 
-# 测试镜像功能
-test_image() {
-    log_info "测试镜像功能..."
-    
-    if [ "$PUSH" = "false" ]; then
-        # 测试本地镜像
-        log_info "测试本地镜像功能..."
-        
-        # 测试GDAL版本
-        log_info "测试GDAL版本..."
-        if docker run --rm "${FULL_IMAGE_NAME}:${TAG}" gdalinfo --version; then
-            log_success "GDAL版本测试通过"
-        else
-            log_error "GDAL版本测试失败"
-            exit 1
+# 显示可用的PostGIS版本
+show_available_versions() {
+    log_info "可用的PostGIS版本:"
+    echo "PostgreSQL | PostGIS"
+    echo "----------|--------"
+    find postgis -maxdepth 2 -type d -name "*-*" | sort | while read dir; do
+        if [[ $dir =~ postgis/([0-9]+)-([0-9.]+) ]]; then
+            PG_VERSION="${BASH_REMATCH[1]}"
+            POSTGIS_VERSION="${BASH_REMATCH[2]}"
+            echo "$PG_VERSION        | $POSTGIS_VERSION"
         fi
-        
-        # 测试Java版本
-        log_info "测试Java版本..."
-        if docker run --rm "${FULL_IMAGE_NAME}:${TAG}" java -version; then
-            log_success "Java版本测试通过"
-        else
-            log_error "Java版本测试失败"
-            exit 1
-        fi
-        
-        # 测试Java GDAL绑定（更加健壮的检查）
-        log_info "测试Java GDAL绑定..."
-        if docker run --rm "${FULL_IMAGE_NAME}:${TAG}" bash -c 'if [ -f "/usr/local/share/java/gdal.jar" ]; then echo "Java GDAL bindings found"; ls -la /usr/local/share/java/gdal.jar; else echo "Warning: Java GDAL bindings not found, but continuing..."; fi'; then
-            log_success "Java GDAL绑定测试完成"
-        else
-            log_error "Java GDAL绑定测试失败"
-            exit 1
-        fi
-        
-        log_success "镜像功能测试通过"
-    else
-        log_info "镜像已推送到仓库，跳过本地测试"
-    fi
+    done
 }
 
 # 显示使用帮助
@@ -222,40 +198,46 @@ show_help() {
 用法: $0 [选项]
 
 选项:
-    -r, --registry REGISTRY     镜像仓库地址 (默认: 无)
-    -n, --name NAME            镜像名称 (默认: gdal-jdk8-gdal240)
-    -t, --tag TAG              镜像标签 (默认: 2.4.0-jdk8)
-    -p, --platforms PLATFORMS  支持平台 (默认: linux/amd64,linux/arm64)
-    --push                     构建后推送到仓库
-    --no-cache                 不使用缓存构建
-    --debug                    启用调试模式
-    -h, --help                 显示帮助信息
+    -r, --registry REGISTRY         镜像仓库地址 (默认: 无)
+    -n, --name NAME                镜像名称 (默认: postgis)
+    -p, --postgres-version VERSION  PostgreSQL版本 (默认: 13)
+    -g, --postgis-version VERSION   PostGIS版本 (默认: 3.5)
+    -t, --tag-suffix SUFFIX        镜像标签后缀 (默认: 无)
+    -P, --platforms PLATFORMS      支持平台 (默认: linux/amd64,linux/arm64)
+    --push                         构建后推送到仓库
+    --no-cache                     不使用缓存构建
+    -l, --list                     列出所有可用的PostGIS版本
+    -h, --help                     显示帮助信息
 
 环境变量:
     REGISTRY                   镜像仓库地址
     IMAGE_NAME                 镜像名称
-    TAG                        镜像标签
+    POSTGRES_VERSION           PostgreSQL版本
+    POSTGIS_VERSION            PostGIS版本
+    TAG_SUFFIX                 镜像标签后缀
     PLATFORMS                  支持的平台列表
     BUILD_ARGS                 额外的构建参数
     PUSH                       是否推送 (true/false)
     NO_CACHE                   是否禁用缓存 (true/false)
-    DEBUG                      是否启用调试模式 (true/false)
 
 示例:
     # 基本构建
     $0
 
+    # 构建特定版本
+    $0 --postgres-version 14 --postgis-version 3.5
+
     # 构建并推送到仓库
     $0 --push --registry your-registry.com
 
-    # 使用自定义标签构建
-    $0 --tag v1.0.0 --no-cache
+    # 使用自定义标签后缀构建
+    $0 --tag-suffix -dev
 
     # 只构建AMD64架构
     $0 --platforms linux/amd64
 
-    # 启用调试模式
-    $0 --debug
+    # 列出所有可用版本
+    $0 --list
 EOF
 }
 
@@ -272,11 +254,19 @@ main() {
                 IMAGE_NAME="$2"
                 shift 2
                 ;;
-            -t|--tag)
-                TAG="$2"
+            -p|--postgres-version)
+                POSTGRES_VERSION="$2"
                 shift 2
                 ;;
-            -p|--platforms)
+            -g|--postgis-version)
+                POSTGIS_VERSION="$2"
+                shift 2
+                ;;
+            -t|--tag-suffix)
+                TAG_SUFFIX="$2"
+                shift 2
+                ;;
+            -P|--platforms)
                 PLATFORMS="$2"
                 shift 2
                 ;;
@@ -288,9 +278,9 @@ main() {
                 NO_CACHE="true"
                 shift
                 ;;
-            --debug)
-                DEBUG="true"
-                shift
+            -l|--list)
+                show_available_versions
+                exit 0
                 ;;
             -h|--help)
                 show_help
@@ -317,15 +307,20 @@ main() {
     setup_builder
     build_image
     verify_build
-    test_image
     
-    log_success "GDAL JDK8 GDAL2.4.0多架构镜像构建完成！"
-    log_info "镜像名称: ${FULL_IMAGE_NAME}:${TAG}"
+    log_success "PostGIS多架构镜像构建完成！"
+    log_info "镜像名称: ${FULL_IMAGE_NAME}:${POSTGRES_VERSION}-${POSTGIS_VERSION}${TAG_SUFFIX}"
     log_info "支持平台: ${PLATFORMS}"
     
     echo
     log_info "可以使用以下命令运行容器:"
-    echo "docker run -it --rm -v \$(pwd)/data:/data ${FULL_IMAGE_NAME}:${TAG}"
+    echo "docker run -d \\"
+    echo "  --name postgis \\"
+    echo "  -e POSTGRES_PASSWORD=mysecretpassword \\"
+    echo "  -e POSTGRES_USER=myuser \\"
+    echo "  -e POSTGRES_DB=mydb \\"
+    echo "  -p 5432:5432 \\"
+    echo "  ${FULL_IMAGE_NAME}:${POSTGRES_VERSION}-${POSTGIS_VERSION}${TAG_SUFFIX}"
     echo
 }
 

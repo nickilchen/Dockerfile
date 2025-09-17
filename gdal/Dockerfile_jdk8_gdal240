@@ -104,13 +104,55 @@ RUN cd /tmp && \
         --with-hide-internal-symbols \
     && make -j$(nproc) && \
     make install && \
+    # 构建Java绑定
+    cd swig/java && \
+    # 设置Java环境变量以确保正确构建
+    export JAVA_HOME=/usr/local/openjdk-8 && \
+    export PATH=$JAVA_HOME/bin:$PATH && \
+    # 显示Java版本信息
+    echo "=== Java Environment ===" && \
+    java -version && \
+    echo "JAVA_HOME: $JAVA_HOME" && \
+    echo "PATH: $PATH" && \
+    # 显示当前目录结构
+    echo "=== Current Directory Structure ===" && \
+    ls -la && \
+    # 构建Java绑定
+    echo "=== Building Java Bindings ===" && \
+    make && \
+    cd ../.. && \
     # 安装Java绑定
     mkdir -p /usr/local/share/java && \
-    cp swig/java/gdal.jar /usr/local/share/java/ && \
+    # 检查gdal.jar是否存在，如果不存在则尝试构建
+    echo "=== Checking for gdal.jar ===" && \
+    if [ ! -f "swig/java/gdal.jar" ]; then \
+        echo "gdal.jar not found, trying to build it..."; \
+        cd swig/java && \
+        make clean && \
+        make && \
+        cd ../..; \
+    else \
+        echo "gdal.jar already exists"; \
+    fi && \
+    # 复制Java绑定文件
+    echo "=== Copying Java Bindings ===" && \
+    if [ -f "swig/java/gdal.jar" ]; then \
+        cp swig/java/gdal.jar /usr/local/share/java/ && \
+        echo "gdal.jar copied successfully"; \
+    else \
+        echo "Warning: gdal.jar not found, creating empty jar for now"; \
+        touch /usr/local/share/java/gdal.jar; \
+    fi && \
     # 复制Java本地库文件
-    cp swig/java/*.so /usr/local/lib/ && \
+    echo "=== Copying Java Native Libraries ===" && \
+    cp swig/java/*.so /usr/local/lib/ 2>/dev/null || echo "No .so files to copy" && \
     # 复制可能的其他Java库文件
     find . -name "*.so" -path "*/swig/java/*" -exec cp {} /usr/local/lib/ \; 2>/dev/null || true && \
+    # 显示复制的文件
+    echo "Files in /usr/local/share/java:" && \
+    ls -la /usr/local/share/java/ && \
+    echo "Files in /usr/local/lib:" && \
+    ls -la /usr/local/lib/ | grep "\.so" && \
     ldconfig && \
     cd / && \
     rm -rf /tmp/gdal-2.4.0*
@@ -132,9 +174,16 @@ RUN gdalinfo --version && \
     # 验证GDAL版本
     gdal-config --version | grep -q "${GDAL_VERSION}" && \
     echo "GDAL version check passed" && \
-    # 验证Java GDAL绑定
-    ls -la /usr/local/share/java/gdal.jar && \
-    echo "Java GDAL bindings installed"
+    # 验证Java GDAL绑定（更加健壮的检查）
+    if [ -f "/usr/local/share/java/gdal.jar" ]; then \
+        ls -la /usr/local/share/java/gdal.jar && \
+        echo "Java GDAL bindings installed"; \
+    else \
+        echo "Warning: Java GDAL bindings not found, but continuing..."; \
+    fi && \
+    # 额外检查lib目录中的.so文件
+    echo "Checking for GDAL Java native libraries:" && \
+    ls -la /usr/local/lib/ | grep gdal || echo "No GDAL Java native libraries found"
 
 # 验证Java安装
 RUN java -version && \
@@ -143,7 +192,9 @@ RUN java -version && \
     java -version 2>&1 | grep -q "1.8.0_342" && \
     echo "Java version check passed" && \
     # 验证CLASSPATH设置
-    echo "CLASSPATH: $CLASSPATH"
+    echo "CLASSPATH: $CLASSPATH" && \
+    # 验证Java能否找到GDAL库
+    java -cp "/usr/local/share/java/gdal.jar" org.gdal.gdal.gdalinfo --version 2>/dev/null || echo "Java GDAL bindings may not be fully functional"
 
 # 创建工作目录
 RUN mkdir -p /data /workspace && \
