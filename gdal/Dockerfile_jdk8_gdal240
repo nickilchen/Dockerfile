@@ -153,7 +153,11 @@ RUN cd /tmp && \
     ls -la /usr/local/share/java/ && \
     echo "Files in /usr/local/lib:" && \
     ls -la /usr/local/lib/ | grep "\.so" && \
+    cp swig/java/*.so $JAVA_HOME/jre/lib/ext/ && \
+    cp swig/java/gdal.jar $JAVA_HOME/jre/lib/ext/ && \
     ldconfig && \
+    # cp -rf /usr/local/lib/libgdalalljni.so $JAVA_HOME/jre/lib/ext/ && \
+    # cp -rf ${CLASSPATH} $JAVA_HOME/jre/lib/ext/ && \
     cd / && \
     rm -rf /tmp/gdal-2.4.0*
 

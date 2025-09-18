@@ -104,6 +104,8 @@ RUN cd /tmp && \
     mkdir -p /usr/local/share/java && \
     cp swig/java/gdal.jar /usr/local/share/java/ && \
     cp swig/java/*.so /usr/local/lib/ && \
+    cp swig/java/*.so $JAVA_HOME/jre/lib/ext/ && \
+    cp swig/java/gdal.jar $JAVA_HOME/jre/lib/ext/ && \
     ldconfig && \
     cd / && \
     rm -rf /tmp/gdal-${GDAL_VERSION}*

@@ -63,7 +63,20 @@ test_postgis() {
     
     # 等待数据库启动
     log_info "等待数据库启动..."
-    sleep 30
+    TIMEOUT=60
+    COUNT=0
+    until docker exec test-postgis pg_isready -U testuser -d testdb || [ $COUNT -gt $TIMEOUT ]; do
+        log_info "⏳ PostgreSQL仍在启动中..."
+        sleep 5
+        COUNT=$((COUNT + 5))
+    done
+    
+    if [ $COUNT -gt $TIMEOUT ]; then
+        log_error "PostgreSQL启动超时"
+        docker logs test-postgis
+        cleanup
+        exit 1
+    fi
     
     # 测试PostgreSQL连接
     log_info "测试PostgreSQL连接..."
@@ -71,6 +84,7 @@ test_postgis() {
         log_success "PostgreSQL连接测试通过"
     else
         log_error "PostgreSQL连接测试失败"
+        docker logs test-postgis
         cleanup
         exit 1
     fi
@@ -81,6 +95,7 @@ test_postgis() {
         log_success "PostGIS扩展测试通过"
     else
         log_error "PostGIS扩展测试失败"
+        docker logs test-postgis
         cleanup
         exit 1
     fi
@@ -91,6 +106,7 @@ test_postgis() {
         log_success "PostGIS功能测试通过"
     else
         log_error "PostGIS功能测试失败"
+        docker logs test-postgis
         cleanup
         exit 1
     fi

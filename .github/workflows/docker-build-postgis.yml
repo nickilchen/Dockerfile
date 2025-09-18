@@ -83,7 +83,7 @@ env:
 jobs:
   # 发现PostGIS版本
   discover-versions:
-    name: 🔍 Discover PostGIS Versions
+    name: 🔍 发现PostGIS版本
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.discover.outputs.matrix }}
@@ -129,7 +129,7 @@ jobs:
 
   # 构建配置分析
   build-config:
-    name: 📋 Build Configuration
+    name: 📋 构建配置分析
     runs-on: ubuntu-latest
     outputs:
       registry: ${{ steps.config.outputs.registry }}
@@ -178,7 +178,7 @@ jobs:
 
   # 构建和推送镜像
   build-and-push:
-    name: 🏗️ Build and Push PostGIS ${{ matrix.pg_version }}-${{ matrix.postgis_version }}
+    name: 🏗️ 构建并推送PostGIS ${{ matrix.pg_version }}-${{ matrix.postgis_version }}
     runs-on: ubuntu-latest
     needs: [discover-versions, build-config]
     strategy:
@@ -321,7 +321,7 @@ jobs:
 
   # 测试构建的镜像
   test-image:
-    name: 🧪 Test PostGIS Images
+    name: 🧪 测试PostGIS镜像
     runs-on: ubuntu-latest
     needs: [discover-versions, build-config, build-and-push]
     if: needs.build-config.outputs.push-enabled == 'true'
@@ -367,29 +367,45 @@ jobs:
           
           # 测试PostgreSQL和PostGIS功能
           echo "🔍 测试PostgreSQL和PostGIS功能..."
+          # 使用正确的命令启动PostgreSQL并测试连接
           docker run --rm --platform=$PLATFORM \
             -e POSTGRES_PASSWORD=testpass \
             -e POSTGRES_USER=testuser \
             -e POSTGRES_DB=testdb \
-            $TEST_TAG \
-            pg_isready
+            -d \
+            --name test-postgis \
+            $TEST_TAG
+          
+          # 等待PostgreSQL启动
+          echo "⏳ 等待PostgreSQL启动..."
+          TIMEOUT=60
+          COUNT=0
+          until docker exec test-postgis pg_isready -U testuser -d testdb || [ $COUNT -gt $TIMEOUT ]; do
+            echo "⏳ PostgreSQL仍在启动中..."
+            sleep 5
+            COUNT=$((COUNT + 5))
+          done
+          
+          if [ $COUNT -gt $TIMEOUT ]; then
+            echo "❌ PostgreSQL启动超时"
+            docker logs test-postgis
+            exit 1
+          fi
           
           echo "✅ 平台 $PLATFORM PostgreSQL功能测试通过!"
           
           # 测试PostGIS扩展
           echo "🔍 测试PostGIS扩展..."
-          docker run --rm --platform=$PLATFORM \
-            -e POSTGRES_PASSWORD=testpass \
-            -e POSTGRES_USER=testuser \
-            -e POSTGRES_DB=testdb \
-            $TEST_TAG \
-            postgres -c 'SELECT PostGIS_Version();'
+          docker exec test-postgis psql -U testuser -d testdb -c 'SELECT PostGIS_Version();'
           
           echo "✅ 平台 $PLATFORM PostGIS扩展测试通过!"
+          
+          # 清理测试容器
+          docker stop test-postgis
 
   # 安全扫描
   security-scan:
-    name: 🔒 Security Scan
+    name: 🔒 安全扫描
     runs-on: ubuntu-latest
     needs: [discover-versions, build-config, build-and-push]
     if: needs.build-config.outputs.push-enabled == 'true'
@@ -400,6 +416,9 @@ jobs:
       security-events: write
       
     steps:
+      - name: 📥 检出代码仓库
+        uses: actions/checkout@v4
+
       - name: 🔍 运行Trivy漏洞扫描器
         uses: aquasecurity/trivy-action@master
         with:
@@ -415,7 +434,7 @@ jobs:
 
   # 构建总结
   build-summary:
-    name: 📊 Build Summary
+    name: 📊 构建总结
     runs-on: ubuntu-latest
     needs: [discover-versions, build-config, build-and-push, test-image]
     if: always()
@@ -423,33 +442,33 @@ jobs:
     steps:
       - name: 📋 创建构建总结
         run: |
-          echo "## 🐳 PostGIS Multi-Arch Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "## 🐳 PostGIS多架构构建总结" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📊 Build Information" >> $GITHUB_STEP_SUMMARY
-          echo "- **🏷️ Image**: \`${{ needs.build-config.outputs.image-name }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **🏗️ Platforms**: \`${{ needs.build-config.outputs.platforms }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **📤 Push**: \`${{ needs.build-config.outputs.push-enabled }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "### 📊 构建信息" >> $GITHUB_STEP_SUMMARY
+          echo "- **🏷️ 镜像**: \`${{ needs.build-config.outputs.image-name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **🏗️ 平台**: \`${{ needs.build-config.outputs.platforms }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **📤 推送**: \`${{ needs.build-config.outputs.push-enabled }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           # 构建状态
           if [[ "${{ needs.build-and-push.result }}" == "success" ]]; then
-            echo "### ✅ Build Status: Success" >> $GITHUB_STEP_SUMMARY
+            echo "### ✅ 构建状态: 成功" >> $GITHUB_STEP_SUMMARY
           else
-            echo "### ❌ Build Status: Failed" >> $GITHUB_STEP_SUMMARY
+            echo "### ❌ 构建状态: 失败" >> $GITHUB_STEP_SUMMARY
           fi
           
           # 测试状态
           if [[ "${{ needs.test-image.result }}" == "success" ]]; then
-            echo "### ✅ Test Status: Passed" >> $GITHUB_STEP_SUMMARY
+            echo "### ✅ 测试状态: 通过" >> $GITHUB_STEP_SUMMARY
           elif [[ "${{ needs.test-image.result }}" == "skipped" ]]; then
-            echo "### ⏭️ Test Status: Skipped" >> $GITHUB_STEP_SUMMARY
+            echo "### ⏭️ 测试状态: 跳过" >> $GITHUB_STEP_SUMMARY
           else
-            echo "### ❌ Test Status: Failed" >> $GITHUB_STEP_SUMMARY
+            echo "### ❌ 测试状态: 失败" >> $GITHUB_STEP_SUMMARY
           fi
           
           if [[ "${{ needs.build-config.outputs.push-enabled }}" == "true" ]]; then
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### 🚀 Usage" >> $GITHUB_STEP_SUMMARY
+            echo "### 🚀 使用方法" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
             echo "# 拉取镜像示例" >> $GITHUB_STEP_SUMMARY
             echo "docker pull ${{ needs.build-config.outputs.registry }}/${{ needs.build-config.outputs.image-name }}:13-3.5" >> $GITHUB_STEP_SUMMARY
